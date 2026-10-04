@@ -13,6 +13,8 @@ material and lighting layers.
 
 ![Walk cycle](docs/walk.png)
 
+![Skirt and hair secondary motion](docs/dynamics.png)
+
 ## What it does
 
 - **Bodies.** Any age 1 to 90, gender blend, muscle, weight, height, proportions and ancestry mix,
@@ -44,6 +46,8 @@ material and lighting layers.
   counter-rotating thorax, arm swing) blending walk into run; IK-planted feet; gaze with saccades,
   head/eye distribution, lid tracking and spontaneous blinks; speech from loudness or visemes;
   inertialized transitions; BVH import with retargeting (CMU, Mixamo, MakeHuman name tables).
+- **Secondary motion.** Long hair, ponytails and skirts hang on verlet chains that collide with the
+  head, shoulders, hips, thighs and knees and are skinned like any bone.
 - **Performance.** Dual-quaternion skinning in one compute dispatch per character, all characters in
   one command buffer, written straight into `LowLevelMesh` (dynamic stream 56 B/vertex, static stream
   uploaded once). Two mesh LODs, animation LOD (face, then gaze and fingers drop out with distance),

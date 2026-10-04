@@ -51,6 +51,8 @@ public struct HumanModel: Sendable {
     public let mesh: SkinnedMesh
     /// Per vertex: (bone A, bone B, crease gain, stretch gain) for dynamic wrinkles.
     public let creases: [(Int, Int, Float, Float)]
+    /// Simulated chains (hair, skirts); their bones follow the rig's bones in skinning order.
+    public let chains: [ChainDef]
 
     public init(_ spec: HumanSpec) {
         self.init(spec, body: HumanBody(spec.shape, subdivision: spec.subdivision))
@@ -65,6 +67,7 @@ public struct HumanModel: Sendable {
         // Each layer stands off the previous ones.
         var layerAt: [Int: Float] = [:]
         var fits: [FittedGarment] = []
+        var clothChains: [ChainDef] = []
         for g in sorted {
             let extra = layerAt.filter { $0.key < g.layer }.map(\.value).max() ?? 0
             let fit = GarmentFitter.fit(g, body: body, layerOffset: extra * 0.6)
@@ -88,7 +91,12 @@ public struct HumanModel: Sendable {
                     f.mesh.parts[pi].indices = kept
                 }
             }
-            clothes.append(f.mesh)
+            // Chain markers are per garment: shift them past earlier garments' chains.
+            var gm = f.mesh
+            let shift = UInt16(clothChains.reduce(0) { $0 + $1.segments })
+            if shift > 0 { for i in gm.joints.indices { var j = gm.joints[i]; for q in 0..<4 where j[q] >= chainMarker { j[q] += shift }; gm.joints[i] = j } }
+            clothChains += f.chains
+            clothes.append(gm)
         }
         var m = body.mesh
         if !hidden.isEmpty, let si = m.parts.firstIndex(where: { $0.slot == .skin }) {
@@ -102,9 +110,24 @@ public struct HumanModel: Sendable {
             }
             m.parts[si].indices = kept
         }
-        m.append(HairBuilder.mesh(spec.hair, body: body))
-        m.append(clothes)
+        // Chain bone ids: rig bones first, then each mesh's chains in order.
+        var chains: [ChainDef] = []
+        func relocate(_ part: SkinnedMesh, _ ch: [ChainDef]) -> SkinnedMesh {
+            var p = part
+            let base = UInt16(body.skeleton.count + chains.reduce(0) { $0 + $1.segments })
+            for i in p.joints.indices {
+                var j = p.joints[i]
+                for k in 0..<4 where j[k] >= chainMarker { j[k] = j[k] - chainMarker + base }
+                p.joints[i] = j
+            }
+            chains += ch
+            return p
+        }
+        let (hair, hairChains) = HairBuilder.build(spec.hair, body: body)
+        m.append(relocate(hair, hairChains))
+        m.append(relocate(clothes, clothChains))
         mesh = m
+        self.chains = chains
         creases = HumanModel.creaseDrivers(m, skeleton: body.skeleton)
     }
 
@@ -115,6 +138,7 @@ public struct HumanModel: Sendable {
             let j = m.joints[i], w = m.weights[i]
             guard w.y > 0.15 else { return (0, 0, 0, 0) }
             let a = Int(j.x), b = Int(j.y)
+            guard a < s.count, b < s.count else { return (0, 0, 0, 0) }
             let pa = s.bones[a].parent, pb = s.bones[b].parent
             guard pa == b || pb == a else { return (0, 0, 0, 0) }
             let balance = 1 - abs(w.x - w.y) / max(1e-3, w.x + w.y)

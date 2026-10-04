@@ -104,15 +104,15 @@ func renderCommand(_ args: [String]) async throws {
 @MainActor
 func animCommand(_ args: [String]) async throws {
     HumanHDSetup.register()
-    let shape: BodyShape = args.contains("male") ? .averageMale : .averageFemale
-    let body = HumanBody(shape, subdivision: 1)
-    let ch = try HumanCharacter(body: body)
-    var appearance = Appearance(); appearance.detail = SkinDetail.matching(shape)
-    let skin = try await SkinMaterial.make(appearance)
-    let eye = try EyeMaterial.eyeball(appearance.eyes)
-    ch.setMaterials(ch.parts.map { p -> any RealityKit.Material in
-        switch p.slot { case .skin: return skin; case .eye: return eye; case .cornea: return EyeMaterial.cornea(); case .eyelash: return (try? EyeMaterial.lashes(color: appearance.hairColor)) ?? HumanShading.placeholder(p); default: return HumanShading.placeholder(p) }
-    })
+    Human.setup()
+    var spec = HumanSpec()
+    spec.shape = args.contains("male") ? .averageMale : .averageFemale
+    spec.appearance.detail = SkinDetail.matching(spec.shape)
+    spec.outfit = .none; spec.hair = .bald
+    for (k, o) in Outfit.presets where args.contains(k) { spec.outfit = o }
+    for (k, h) in HairStyle.presets where args.contains("hair=" + k) { spec.hair = h }
+    spec.appearance.hairColor = LinearColor(hex: 0x5A3A22)
+    let ch = try await Human.make(spec, animate: false, lods: false)
     let anim = ch.animate(seed: 3)
     anim.rootMotion = false
     let mode = ["walk", "run", "talk", "idle"].first(where: { args.contains($0) }) ?? "idle"

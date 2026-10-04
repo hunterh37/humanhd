@@ -42,8 +42,12 @@ public struct HairStyle: Codable, Sendable, Hashable {
 
 public enum HairBuilder {
     /// Hair mesh for a body: part "hair" (cards) and "hairshell" (scalp).
-    public static func mesh(_ style: HairStyle, body: HumanBody) -> SkinnedMesh {
-        guard style.kind != .bald else { return SkinnedMesh() }
+    public static func mesh(_ style: HairStyle, body: HumanBody) -> SkinnedMesh { build(style, body: body).0 }
+
+    /// Hair mesh plus simulated chains (long hair, ponytails). Card vertices below the head are skinned
+    /// to chain bones (joint ids from `chainMarker`).
+    public static func build(_ style: HairStyle, body: HumanBody) -> (SkinnedMesh, [ChainDef]) {
+        guard style.kind != .bald else { return (SkinnedMesh(), []) }
         let topo = BodyTopology.shared(level: body.topologyLevel)
         let fields = SkinFields.shared
         let n = topo.skinVertexCount
@@ -83,7 +87,7 @@ public enum HairBuilder {
             shell.parts = [SkinnedMesh.Part(slot: .hair, material: "hairshell", indices: idx)]
             out.append(shell)
         }
-        guard style.kind != .buzz else { return out }
+        guard style.kind != .buzz else { return (out, []) }
         // Head proxy: ellipsoid fitted to the scalp and face (collision for strands).
         var lo = V3(repeating: .greatestFiniteMagnitude), hi = -lo
         for i in 0..<n where scalp[i] > 0.2 { lo = simd_min(lo, src.positions[i]); hi = simd_max(hi, src.positions[i]) }
@@ -242,8 +246,38 @@ public enum HairBuilder {
             }
         }
         cards.parts = [SkinnedMesh.Part(slot: .hair, material: "hair", indices: cidx)]
+        // Chains: a ring of strands hanging from the head for long hair, one tail for a ponytail.
+        var chains: [ChainDef] = []
+        let y0 = neckY + 0.07
+        var hemY = Float.greatestFiniteMagnitude
+        for p in cards.positions { hemY = min(hemY, p.y) }
+        if style.kind == .ponytail {
+            var def = ChainDef(parent: head, points: (0...5).map { tie + V3(0, -style.length * Float($0) / 5, -0.02 * Float($0 > 0 ? 1 : 0)) })
+            def.stiffness = 0.06; def.damping = 0.9; def.radius = 0.02
+            chains.append(def)
+        } else if hemY < y0 - 0.05 && style.kind != .bun {
+            let n = 9
+            for c in 0..<n {
+                let a = (-0.8 + 1.6 * Float(c) / Float(n - 1)) * .pi   // around the back, from side to side
+                let start = hc + V3(sin(a) * (hr.x + style.volume), y0 - hc.y, cos(a) * (hr.z + style.volume) * 0.9)
+                let len = y0 - hemY
+                var def = ChainDef(parent: head, points: (0...4).map { start + V3(0, -len * Float($0) / 4, 0) })
+                def.stiffness = 0.07; def.damping = 0.88; def.radius = 0.015
+                chains.append(def)
+            }
+        }
+        if !chains.isEmpty {
+            for i in cards.positions.indices {
+                let p = cards.positions[i]
+                let hanging = style.kind == .ponytail ? (p.z < tie.z + 0.01 && p.y < tie.y + 0.01) : p.y < y0 + 0.03
+                guard hanging, let (j, w) = ChainDef.weights(for: p, chains: chains, firstBone: 0, maxDistance: 0.3) else { continue }
+                let headW = style.kind == .ponytail ? 0 : smoothstep(y0 - 0.07, y0 + 0.03, p.y)
+                cards.joints[i] = SIMD4(UInt16(head), chainMarker + j.x, chainMarker + j.y, 0)
+                cards.weights[i] = SIMD4(headW, w.x * (1 - headW), w.y * (1 - headW), 0)
+            }
+        }
         out.append(cards)
-        return out
+        return (out, chains)
     }
 
     /// Ponytail tail / bun coil continuing from the tie point.

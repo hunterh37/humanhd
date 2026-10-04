@@ -61,7 +61,7 @@ and mirrors left-side descriptions onto the right, so poses are authored in anat
 
 ## Limits and next steps
 
-No cloth or hair simulation yet (spring bones for ponytails and skirts are the next step). Hair cards
+Secondary motion is chain-based (verlet with sphere colliders), not full cloth. Hair cards
 are procedural; strand-quality grooms need a dedicated card layout tool. Teeth use the hm08 helper
 geometry. Garment UVs wrap cylindrically with one seam at the back. Further work: quadric-decimated
 crowd LOD (~5k triangles), vertex-animation-texture impostors for very large crowds, ASTC compression

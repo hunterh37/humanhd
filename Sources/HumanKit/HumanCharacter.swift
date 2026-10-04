@@ -33,8 +33,11 @@ public final class HumanCharacter {
 
     var gpu: SkinnedGPUMesh
     var dq: [SIMD4<Float>]
+    /// Secondary motion (hair, skirts). Nil when the character has no chains.
+    public var dynamics: ChainSimulator?
     var frameCounter = 0
     var pendingDT: Float = 0
+    var pendingDTUsed: Float = 0
 
     /// Mesh levels of detail: level 0 is the hero mesh; coarser levels are added with `addLevel`.
     public struct Level {
@@ -106,10 +109,21 @@ public final class HumanCharacter {
             driver.update(&pose, skeleton: body.skeleton, dt: pendingDT, lod: animationLOD)
             poseDirty = true
         }
+        pendingDTUsed = pendingDT
         pendingDT = 0
+        if dynamics != nil { poseDirty = true }
         guard poseDirty else { return false }
         poseDirty = false
-        let skin = pose.skinning(body.skeleton)
+        var skin: [RigidTransform]
+        if var sim = dynamics {
+            let w = pose.world(body.skeleton)
+            skin = (0..<body.skeleton.count).map { w[$0] * body.skeleton.bones[$0].rest.inverse }
+            skin += animationLOD < 2 ? sim.step(world: w, skeleton: body.skeleton, dt: max(dt, pendingDTUsed)) : sim.restSkinning(world: w, skeleton: body.skeleton)
+            dynamics = sim
+        } else {
+            skin = pose.skinning(body.skeleton)
+        }
+        if dq.count < skin.count * 2 { dq = Array(repeating: .zero, count: skin.count * 2) }
         for (i, s) in skin.enumerated() {
             let d = DualQuat(s)
             dq[i * 2] = d.real.vector; dq[i * 2 + 1] = d.dual.vector

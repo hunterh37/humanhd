@@ -35,6 +35,7 @@ public enum Human {
     public static func make(_ model: HumanModel, animate: Bool = true, seed: UInt64 = 1) async throws -> HumanCharacter {
         let creases = model.creases.map { CreaseDriver($0.0, $0.1, crease: $0.2, stretch: $0.3) }
         let ch = try HumanCharacter(body: model.body, mesh: model.mesh, creases: creases)
+        if !model.chains.isEmpty { ch.dynamics = ChainSimulator(chains: model.chains, skeleton: model.body.skeleton) }
         ch.setMaterials(try await materials(for: ch.parts, spec: model.spec))
         ch.spec = model.spec
         if animate { ch.animate(seed: seed) }

@@ -72,7 +72,12 @@ public struct FittedGarment: Sendable {
     public var hidden: Set<Int>
     /// Skin vertex each shell vertex grew from (-1 for generated geometry: hems, skirts).
     public var source: [Int] = []
+    /// Simulated chains (skirts). Mesh joints >= `chainMarker` refer to chain bones.
+    public var chains: [ChainDef] = []
 }
+
+/// Joint ids at or above this refer to simulated chain bones local to the mesh that created them.
+public let chainMarker: UInt16 = 10_000
 
 /// Grows garments from the subdivided skin.
 public enum GarmentFitter {
@@ -322,12 +327,14 @@ public enum GarmentFitter {
         m.parts = [SkinnedMesh.Part(slot: .garment, material: g.material, indices: idx)]
         m.computeFrames(weld: true)
         source += Array(repeating: -1, count: m.positions.count - source.count)
+        var chains: [ChainDef] = []
         if g.coverage.skirt > 0 {
-            let tube = skirtTube(g, body: body, info: info, layerOffset: layerOffset)
+            let (tube, ch) = skirtTube(g, body: body, info: info, layerOffset: layerOffset)
             source += Array(repeating: -1, count: tube.positions.count)
             m.append(tube)
+            chains = ch
         }
-        return FittedGarment(garment: g, mesh: m, hidden: hidden, source: source)
+        return FittedGarment(garment: g, mesh: m, hidden: hidden, source: source, chains: chains)
     }
 
     /// Shoes: every shell vertex below the ankle is re-projected onto a shoe last (rounded toe box,
@@ -370,7 +377,7 @@ public enum GarmentFitter {
 
     /// Skirt: a tube from the hips to the hem that bridges the legs, flaring out, folded into soft
     /// vertical pleats; skinned to the pelvis with a share of the thighs so it follows the legs.
-    static func skirtTube(_ g: Garment, body: HumanBody, info: SkinInfo, layerOffset: Float) -> SkinnedMesh {
+    static func skirtTube(_ g: Garment, body: HumanBody, info: SkinInfo, layerOffset: Float) -> (SkinnedMesh, [ChainDef]) {
         let lm = info.lm
         let sk = body.skeleton
         let n = info.canon.count
@@ -403,6 +410,20 @@ public enum GarmentFitter {
         let hemWorldY = topWorldY - (canonTop - hemY)
         var m = SkinnedMesh()
         let seed = UInt32(truncatingIfNeeded: g.id.hashValue & 0xFFFF)
+        let chainCount = 20, chainSegs = 6
+        _ = (legL, legR)
+        func ringPoint(_ a: Float, _ t: Float) -> V3 {
+            let k = Int((a / (2 * .pi) + 0.5) * Float(segs) + 0.5) % segs
+            let rad = topR[k] * (1 + 0.05 * t) + g.offset + layerOffset + 0.012 + g.flare * t * t
+            return center + V3(sin(a) * rad, (hemWorldY - topWorldY) * t + topWorldY - center.y, cos(a) * rad)
+        }
+        var chains: [ChainDef] = []
+        for c in 0..<chainCount {
+            let a = (Float(c) / Float(chainCount) - 0.5) * 2 * .pi
+            var def = ChainDef(parent: root, points: (0...chainSegs).map { ringPoint(a, Float($0) / Float(chainSegs)) })
+            def.stiffness = 0.05; def.damping = 0.86; def.radius = 0.018
+            chains.append(def)
+        }
         for r in 0...rings {
             let t = Float(r) / Float(rings)
             let y = topWorldY + (hemWorldY - topWorldY) * t
@@ -416,13 +437,13 @@ public enum GarmentFitter {
                 m.normals.append(simd_normalize(V3(sin(a), 0.15, cos(a))))
                 m.tangents.append(V4(cos(a), 0, -sin(a), 1))
                 m.uvs.append(V2(Float(k) / Float(segs) * 2 * .pi * 0.2, -y))
-                // Skinning: pelvis at the waist, thighs gain influence toward the hem (front/back follow both).
-                let side = sin(a)
-                let legShare = smoothstep(0.1, 1.0, t) * 0.55
-                let wl = legShare * max(0, 0.5 + side * 0.8), wr = legShare * max(0, 0.5 - side * 0.8)
-                let sum = max(1e-4, (1 - legShare) + wl + wr)
-                m.joints.append(SIMD4(UInt16(root), UInt16(legL), UInt16(legR), 0))
-                m.weights.append(SIMD4((1 - legShare) / sum, wl / sum, wr / sum, 0))
+                // Skinning: pelvis at the waistband, simulated panels below (two neighbors by angle).
+                let fa = Float(k) / Float(segs) * Float(chainCount)
+                let c0 = Int(fa) % chainCount, c1 = (c0 + 1) % chainCount, f = fa - Float(Int(fa))
+                let seg = min(chainSegs - 1, Int(t * Float(chainSegs)))
+                let rootW = 1 - smoothstep(0.0, 0.14, t)
+                m.joints.append(SIMD4(UInt16(root), chainMarker + UInt16(c0 * chainSegs + seg), chainMarker + UInt16(c1 * chainSegs + seg), 0))
+                m.weights.append(SIMD4(rootW, (1 - rootW) * (1 - f), (1 - rootW) * f, 0))
                 m.faceUVs.append(.zero); m.aux.append(V2(0, 1))
             }
         }
@@ -434,6 +455,6 @@ public enum GarmentFitter {
         }}
         m.parts = [SkinnedMesh.Part(slot: .garment, material: g.material, indices: idx)]
         m.computeFrames(weld: true)
-        return m
+        return (m, chains)
     }
 }
