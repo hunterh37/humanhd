@@ -105,13 +105,20 @@ public final class SkinFields: Sendable {
             let aboveNeck = sm(q.y, chinY - 0.07, chinY - 0.02)
             let frontish = sm(q.z - hc.z, -0.03, 0.02)
             f[Field.beard.rawValue][v] = lowerFace * aboveNeck * frontish * (1 - f[Field.lips.rawValue][v]) * (1 - sm(md, 0.0, 0.0) * 0)
-            // Scalp: above the brow line, behind the forehead's front, and the back of the head.
-            let browY = (eyeL.y + 0.035)
-            let ear = lm["temporalis01.L"] ?? hc
-            _ = ear
-            let top = sm(q.y, browY + 0.02, browY + 0.045)
-            let back = sm(-(q.z - hc.z), -0.02, 0.03) * sm(q.y, mouthC.y + 0.02, mouthC.y + 0.06)
-            f[Field.scalp.rawValue][v] = max(top * (1 - sm(q.z - hc.z, 0.045, 0.075)), back) * (front && q.y < browY + 0.02 ? 0 : 1)
+            // Scalp: above a hairline that runs across the forehead, down the temples into sideburns,
+            // over the ears and down to the nape.
+            let zc = eyeL.z - 0.088
+            let th = abs(atan2(q.x, q.z - zc))
+            let knots: [(Float, Float)] = [(0, 0.068), (0.45, 0.064), (0.75, 0.05), (1.05, 0.035), (1.25, -0.02), (1.42, -0.02),
+                                           (1.55, 0.012), (1.95, 0.008), (2.25, mouthC.y - eyeL.y - 0.005), (3.2, mouthC.y - eyeL.y - 0.01)]
+            var hy = knots.last!.1
+            for k in 0..<(knots.count - 1) where th >= knots[k].0 && th <= knots[k + 1].0 {
+                let u = (th - knots[k].0) / (knots[k + 1].0 - knots[k].0)
+                hy = knots[k].1 + (knots[k + 1].1 - knots[k].1) * u
+            }
+            let hairY = eyeL.y + hy
+            let inHead = q.y > mouthC.y - 0.06 && simd_distance(V2(q.x, q.z), V2(0, zc)) < 0.13
+            f[Field.scalp.rawValue][v] = inHead ? sm(q.y, hairY, hairY + 0.012) : 0
         }
         // Hands and feet: palms/soles from the bone frames (skin facing the palm side).
         for v in 0..<n {

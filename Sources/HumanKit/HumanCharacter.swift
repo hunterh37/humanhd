@@ -20,6 +20,10 @@ public final class HumanCharacter {
     public private(set) var mesh: SkinnedMesh
     public var pose: Pose
     public var driver: HumanPoseDriver?
+    /// The spec this character was built from (when made through `Human.make`).
+    public var spec: HumanSpec?
+    /// The procedural animator, when `driver` is one.
+    public var animator: HumanAnimator? { driver as? HumanAnimator }
     /// Skinning level of detail: 0 skins every frame; n skins every (n + 1)th frame.
     public var skinInterval = 0
     /// Animation LOD handed to the driver (0 full, 1 no face, 2 no face or fingers).

@@ -18,6 +18,10 @@ func run() async throws {
         let t1 = Date()
         let body = HumanBody(.averageFemale, subdivision: Int(args.first ?? "1") ?? 1)
         print("body \(Int(Date().timeIntervalSince(t1) * 1000))ms verts \(body.mesh.vertexCount) tris \(body.mesh.triangleCount) bounds \(body.mesh.bounds)")
+        for (k, st) in HairStyle.presets.sorted(by: { $0.key < $1.key }) {
+            let h = HairBuilder.mesh(st, body: body)
+            print("hair", k, h.parts.map { "\($0.material):\($0.indices.count / 3)" })
+        }
         let lashes = Lashes.mesh(base: body.basePositions, skeleton: body.skeleton)
         print("lashes verts", lashes.vertexCount, "tris", lashes.triangleCount)
         if let c = Lashes.debugChains()["L"] {
@@ -37,6 +41,12 @@ func run() async throws {
             print(fl, "nonzero", v.filter { $0 > 0.05 }.count, "max", v.max() ?? 0)
         }
         let lm = f.landmarks
+        let e = lm["eye.L"]!
+        for probe in [V3(0.072, e.y + 0.03, e.z - 0.05), V3(0.075, e.y + 0.0, e.z - 0.08), V3(0.06, e.y + 0.06, e.z - 0.02)] {
+            let i = f.canonical.indices.min(by: { simd_distance(f.canonical[$0], probe) < simd_distance(f.canonical[$1], probe) })!
+            let q = f.canonical[i]
+            print("probe", q - e, "scalp", f.values[SkinFields.Field.scalp.rawValue][i], "th", abs(atan2(q.x, q.z - (e.z - 0.088))))
+        }
         for k in ["oris01", "oris05", "oris03.L", "jaw", "jaw.tail", "head", "eye.L"] { print(k, lm[k] ?? .zero) }
     case "paint":
         guard let painter = SkinPainter.shared, let synth = TextureSynth.shared else { throw NSError(domain: "metal", code: 1) }
@@ -53,6 +63,8 @@ func run() async throws {
         }
     case "posetest":
         try await poseTestCommand(args)
+    case "look":
+        try await lookCommand(args)
     case "anim":
         try await animCommand(args)
     case "render":

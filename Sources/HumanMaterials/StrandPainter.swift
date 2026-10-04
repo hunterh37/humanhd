@@ -23,6 +23,8 @@ public final class StrandPainter: @unchecked Sendable {
         /// Shortest strand as a fraction of the card length.
         public var minLength: Float = 0.72
         public var seed: UInt32 = 3
+        /// 1: density ramp along v (row v keeps a fraction v of the strands; for hairline fades).
+        public var ramp: Float = 0
         public init() {}
         public static let lashes = Spec()
     }
@@ -50,7 +52,7 @@ public final class StrandPainter: @unchecked Sendable {
     static let source = #"""
     #include <metal_stdlib>
     using namespace metal;
-    struct Spec { int strands; float width; float clump; float drift; float minLength; uint seed; };
+    struct Spec { int strands; float width; float clump; float drift; float minLength; uint seed; float ramp; };
     inline uint pcg(uint v) { uint s = v * 747796405u + 2891336453u; uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return (w >> 22u) ^ w; }
     inline float h1(int j, uint s) { return float(pcg(uint(j) ^ pcg(s)) & 0xffffffu) / 16777216.0; }
 
@@ -67,8 +69,15 @@ public final class StrandPainter: @unchecked Sendable {
                 int group = j / 3;
                 float gc = (float(group) * 3.0 + 1.5) / float(n) + float(tileOff) + (h1(group, S.seed + 7u) - 0.5) * 0.05;
                 float len = mix(S.minLength, 1.0, h1(j, S.seed + 3u));
-                if (v > len) continue;
-                float t = v / len;
+                float t;
+                if (S.ramp > 0.5) {
+                    // Short strands at every height; presence grows with v.
+                    if (h1(j, S.seed + 13u) > v * 1.15) continue;
+                    t = fract(v * 6.0 + h1(j, S.seed + 17u));
+                } else {
+                    if (v > len) continue;
+                    t = v / len;
+                }
                 float x = mix(root, gc, S.clump * t * t) + S.drift * (h1(j, S.seed + 5u) - 0.5) * t * t;
                 float width = S.width * pow(max(0.0, 1.0 - t), 0.75) + px * 0.35;
                 float d = abs(u - x);

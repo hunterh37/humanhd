@@ -188,3 +188,42 @@ func poseTestCommand(_ args: [String]) async throws {
     writePNG(ctx.makeImage()!, "out/posetest.png")
     print("out/posetest.png", tests.map(\.0))
 }
+
+
+/// `look [preset outfit] [hair] [seed=n] [face] [az=deg]`: a full character through `Human.make`.
+@MainActor
+func lookCommand(_ args: [String]) async throws {
+    Human.setup()
+    var spec = HumanSpec()
+    if let sd = args.first(where: { $0.hasPrefix("seed=") })?.dropFirst(5), let n = UInt64(sd) { spec = .random(seed: n) }
+    else {
+        spec.shape = args.contains("male") ? .averageMale : .averageFemale
+        spec.appearance.detail = SkinDetail.matching(spec.shape)
+    }
+    for (k, o) in Outfit.presets where args.contains(k) { spec.outfit = o }
+    for (k, h) in HairStyle.presets where args.contains("hair=" + k) { spec.hair = h }
+    if args.contains("nude") { spec.outfit = .none }
+    let t0 = Date()
+    let ch = try await Human.make(spec, animate: true, seed: 2)
+    ch.animator?.rootMotion = false
+    let build = Date().timeIntervalSince(t0)
+    if args.contains("walk") { ch.animator?.core.speed = 1.3 }
+    let env = try RealEnvironment(SunSky.afternoon, skybox: true)
+    let preview = try RealPreview(environment: env)
+    let root = Entity(); root.addChild(ch.entity); env.illuminate(root); preview.add(root)
+    var floor = Prim.terrain(size: V2(20, 20), segments: 4, material: "concrete.smooth") { _ in 0 }
+    floor.uvs = floor.uvs.map { $0 * 2 }
+    root.addChild(try await Model(name: "floor", surfaces: [floor]).modelEntityAsync())
+    var t: Float = 0
+    while t < 1.2 { HumanSkinning.run([ch], dt: 1.0 / 60, wait: t > 1.1); t += 1.0 / 60 }
+    let az = (Float(args.first(where: { $0.hasPrefix("az=") })?.dropFirst(3) ?? "25") ?? 25) * .pi / 180
+    let face = args.contains("face")
+    let h = ch.body.skeleton.bones[ch.body.skeleton["head"]!].head.y
+    let focus = face ? V3(0, h + 0.05, 0.05) : V3(0, 0.88, 0)
+    let dist: Float = face ? 0.65 : 3.1
+    preview.look(from: focus + V3(sin(az) * dist, face ? 0.02 : 0.08, cos(az) * dist), at: focus, fov: 40)
+    guard let img = try await preview.render(width: 900, height: 1200, frames: 6) else { return }
+    let out = args.first(where: { $0.hasSuffix(".png") }) ?? "out/look.png"
+    writePNG(img, out)
+    print(out, "build", Int(build * 1000), "ms tris", ch.mesh.triangleCount, "verts", ch.mesh.vertexCount)
+}
