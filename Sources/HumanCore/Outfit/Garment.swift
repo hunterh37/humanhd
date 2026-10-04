@@ -70,6 +70,8 @@ public struct FittedGarment: Sendable {
     public var mesh: SkinnedMesh
     /// Render-skin vertices this garment fully hides.
     public var hidden: Set<Int>
+    /// Skin vertex each shell vertex grew from (-1 for generated geometry: hems, skirts).
+    public var source: [Int] = []
 }
 
 /// Grows garments from the subdivided skin.
@@ -231,11 +233,13 @@ public enum GarmentFitter {
         // Build the shell: remap vertices.
         var m = SkinnedMesh()
         var remap = [Int: UInt32]()
+        var source: [Int] = []
         var foldAmount: [Float] = [], minOff: [Float] = []
         let src = body.mesh
         let seed = UInt32(truncatingIfNeeded: g.id.hashValue & 0xFFFF)
         for v in used.sorted() {
             remap[v] = UInt32(m.positions.count)
+            source.append(v)
             let p = src.positions[v], nrm = src.normals[v], c = info.canon[v]
             let hemFade = Float(min(ring[v], 4)) / 4
             // Folds: anisotropic noise around the limb axis, deeper toward joints.
@@ -317,8 +321,13 @@ public enum GarmentFitter {
         }
         m.parts = [SkinnedMesh.Part(slot: .garment, material: g.material, indices: idx)]
         m.computeFrames(weld: true)
-        if g.coverage.skirt > 0 { m.append(skirtTube(g, body: body, info: info, layerOffset: layerOffset)) }
-        return FittedGarment(garment: g, mesh: m, hidden: hidden)
+        source += Array(repeating: -1, count: m.positions.count - source.count)
+        if g.coverage.skirt > 0 {
+            let tube = skirtTube(g, body: body, info: info, layerOffset: layerOffset)
+            source += Array(repeating: -1, count: tube.positions.count)
+            m.append(tube)
+        }
+        return FittedGarment(garment: g, mesh: m, hidden: hidden, source: source)
     }
 
     /// Shoes: every shell vertex below the ankle is re-projected onto a shoe last (rounded toe box,

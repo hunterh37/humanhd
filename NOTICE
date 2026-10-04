@@ -1,0 +1,7 @@
+HumanHD includes data derived from MakeHuman 1.1 assets (hm08 base mesh, morph targets, default
+rig and weights, high-poly eyes, face pose units), released under CC0 1.0 Universal.
+Copyright holders at the time of release: Data Collection AB, Joel Palmius, Jonas Hauquier.
+http://www.makehumancommunity.org
+
+Sources/HumanCore/Resources/hm08.hhd.xz is generated from those assets by
+Scripts/import_makehuman.py. No MakeHuman program code (AGPL) is used or included.

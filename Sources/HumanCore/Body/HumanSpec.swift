@@ -64,12 +64,31 @@ public struct HumanModel: Sendable {
         let sorted = spec.outfit.garments.sorted { $0.layer < $1.layer }
         // Each layer stands off the previous ones.
         var layerAt: [Int: Float] = [:]
+        var fits: [FittedGarment] = []
         for g in sorted {
             let extra = layerAt.filter { $0.key < g.layer }.map(\.value).max() ?? 0
             let fit = GarmentFitter.fit(g, body: body, layerOffset: extra * 0.6)
             hidden.formUnion(fit.hidden)
-            clothes.append(fit.mesh)
+            fits.append(fit)
             layerAt[g.layer] = max(layerAt[g.layer] ?? 0, g.offset + extra * 0.6)
+        }
+        // Inner layers lose the triangles an outer layer hides (no poke-through, less overdraw).
+        for (k, fit) in fits.enumerated() {
+            var f = fit
+            let outer = fits[(k + 1)...].filter { $0.garment.layer > fit.garment.layer && $0.garment.hidesBody }.reduce(into: Set<Int>()) { $0.formUnion($1.hidden) }
+            if !outer.isEmpty {
+                for pi in f.mesh.parts.indices {
+                    let idx = f.mesh.parts[pi].indices
+                    var kept: [UInt32] = []
+                    for t in stride(from: 0, to: idx.count, by: 3) {
+                        let v = [idx[t], idx[t + 1], idx[t + 2]].map { f.source[Int($0)] }
+                        if v.allSatisfy({ $0 >= 0 && outer.contains($0) }) { continue }
+                        kept += [idx[t], idx[t + 1], idx[t + 2]]
+                    }
+                    f.mesh.parts[pi].indices = kept
+                }
+            }
+            clothes.append(f.mesh)
         }
         var m = body.mesh
         if !hidden.isEmpty, let si = m.parts.firstIndex(where: { $0.slot == .skin }) {
