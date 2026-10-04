@@ -49,7 +49,7 @@ struct StageView: View {
         studio.building = true
         let t0 = Date()
         guard let c = try? await Human.make(studio.spec, seed: 1) else { studio.building = false; return }
-        c.entity.position = SIMD3(0, 0, -2.3)
+        c.entity.position = SIMD3(0.9, 0, -2.3)
         c.entity.orientation = simd_quatf(angle: 0, axis: [0, 1, 0])
         hero?.entity.removeFromParent()
         hero = c
