@@ -100,6 +100,7 @@ public enum SkinMaterial {
         let scatter = g.input("float3", "ScatterColor", "(1.0, 0.32, 0.18)")
         let transmission = g.input("float", "Transmission", "1.2")
         let creaseDarken = g.input("float", "CreaseDarken", "0.3")
+        let ambientScatter = g.input("float", "AmbientScatter", "0.035")
 
         let uv0 = g.texcoord(0), uv1 = g.texcoord(1)
         let fw = g.xy(g.texcoord(3))[0]
@@ -135,7 +136,8 @@ public enum SkinMaterial {
         let vdir = g.normalize3(g.node("ND_subtract_vector3", [("float3", "in1", wp), ("float3", "in2", cam)], out: "float3"))
         let back = g.pow(g.clamp01(g.dot3(vdir, sunDir)), "5")
         let glow = g.mul(g.mul(back, P[2]), transmission)
-        let emissive = g.scale3(g.mul3(albedo, scatter), glow)
+        // Light scattered under the skin never lets it go grey in shadow: a faint warm floor.
+        let emissive = g.scale3(g.mul3(albedo, scatter), g.add(glow, g.mul(ambientScatter, P[1])))
         let surface = g.node("ND_realitykit_pbr_surfaceshader", [
             ("color3f", "baseColor", g.toColor(color)), ("float3", "normal", normal), ("float", "roughness", rough),
             ("float", "ambientOcclusion", ao), ("float", "specular", spec), ("float", "metallic", "0"),

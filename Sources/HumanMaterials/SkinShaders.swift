@@ -237,8 +237,8 @@ SkinOut paintSkin(float3 p, float3 nIn, float4 t4, Fields f, constant PaintParam
     // Age spots (solar lentigines) on face and hands for older skin.
     if (aged > 0.3) {
         float4 w = worley3(p / 0.011, P.seed + 33u);
-        float spot = (1.0 - sstep(0.15, 0.5, w.x)) * sstep(0.82, 0.92, w.z) * aged;
-        mel *= 1.0 + 0.6 * spot * (sun + 0.2);
+        float spot = (1.0 - sstep(0.12, 0.4, w.x)) * sstep(0.93, 0.98, w.z) * aged;
+        mel *= 1.0 + 0.3 * spot * (sun + 0.2);
     }
     // ---------------- hemoglobin (multiplier around 1)
     float blot = fbm3(p * 22.0, 4, P.seed + 41u);
@@ -318,6 +318,11 @@ SkinOut paintSkin(float3 p, float3 nIn, float4 t4, Fields f, constant PaintParam
     rough += 0.04 * vnoise(p * 60.0, P.seed + 91u);
     rough = mix(rough, 0.62, hair * 0.8);
     float cav = saturate(1.0 + h0 * 6000.0);
+    // Mouth interior: wet, dark, blood-red mucosa in shadow.
+    float inner = f.lipLine;
+    hem = mix(hem, 3.2, inner); mel = mix(mel, 0.5, inner);
+    cav *= 1.0 - 0.8 * inner;
+    rough = mix(rough, 0.25, inner);
     cav *= 1.0 - 0.35 * f.lidMargin * 0.0;
     float thick = saturate(0.08 + 0.85 * f.ears + 0.35 * f.nose * sstep(0.6, 1.0, f.nose) + 0.45 * f.eyelid + 0.3 * f.lips + 0.35 * f.palms * 0.0 + 0.4 * f.creases);
     float spec = saturate(0.3 + 0.3 * tzone + 0.62 * f.lips + 0.7 * f.lidMargin - 0.2 * hair);

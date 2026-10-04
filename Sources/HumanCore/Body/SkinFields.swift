@@ -84,7 +84,9 @@ public final class SkinFields: Sendable {
             // Vermilion from the lip-volume targets; crisp border.
             let lipFP = lipsFP[v]
             f[Field.lips.rawValue][v] = front ? sm(lipFP, 0.1, 0.28) : 0
-            f[Field.lipLine.rawValue][v] = front ? (1 - sm(abs(lipFP - 0.16), 0, 0.08)) * (1 - sm(md, 0.03, 0.04)) : 0
+            // lipLine slot: mouth interior (behind the vermilion, inside the head).
+            let innerZ = mouthC.z - 0.008 - 0.6 * abs(q.x)
+            f[Field.lipLine.rawValue][v] = (md < 0.03 && abs(q.x) < 0.026 && abs(q.y - mouthC.y) < 0.014) ? (1 - sm(q.z, innerZ - 0.006, innerZ)) : 0
             let nearEye = min(simd_distance(q, eyeL), simd_distance(q, eyeR)) < eyeR0 * 1.6
             f[Field.lidMargin.rawValue][v] = nearEye ? 1 - sm(ed, 0.0006, 0.0022) : 0
             f[Field.eyelid.rawValue][v] = nearEye || ed < 0.012 ? (1 - sm(ed, 0.004, 0.012)) * (q.y > (eyeL.y - 0.003) ? 1 : 0.4) : 0

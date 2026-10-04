@@ -204,6 +204,7 @@ func lookCommand(_ args: [String]) async throws {
     for (k, o) in Outfit.presets where args.contains(k) { spec.outfit = o }
     for (k, h) in HairStyle.presets where args.contains("hair=" + k) { spec.hair = h }
     if args.contains("nude") { spec.outfit = .none }
+    if let hc = args.first(where: { $0.hasPrefix("haircolor=") })?.dropFirst(10), let v = UInt32(hc, radix: 16) { spec.appearance.hairColor = LinearColor(hex: v) }
     let t0 = Date()
     let ch = try await Human.make(spec, animate: true, seed: 2)
     ch.animator?.rootMotion = false

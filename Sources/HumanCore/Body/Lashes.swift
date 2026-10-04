@@ -104,7 +104,7 @@ public enum Lashes {
                             if simd_dot(nrm, V3(0, 0, 1)) < 0 { nrm = -nrm }
                             m.positions.append(pos); m.normals.append(nrm)
                             m.tangents.append(V4(along, 1))
-                            m.uvs.append(V2(arc / tile + Float(layer) * 0.37, 1 - u))
+                            m.uvs.append(V2(arc / tile + Float(layer) * 0.37, u))
                             m.joints.append(j); m.weights.append(w)
                         }
                     }

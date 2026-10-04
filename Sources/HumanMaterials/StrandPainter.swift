@@ -72,7 +72,7 @@ public final class StrandPainter: @unchecked Sendable {
                 float t;
                 if (S.ramp > 0.5) {
                     // Short strands at every height; presence grows with v.
-                    if (h1(j, S.seed + 13u) > v * 1.15) continue;
+                    if (h1(j, S.seed + 13u) > v * 1.6) continue;
                     t = fract(v * 6.0 + h1(j, S.seed + 17u));
                 } else {
                     if (v > len) continue;
@@ -81,7 +81,8 @@ public final class StrandPainter: @unchecked Sendable {
                 float x = mix(root, gc, S.clump * t * t) + S.drift * (h1(j, S.seed + 5u) - 0.5) * t * t;
                 float width = S.width * pow(max(0.0, 1.0 - t), 0.75) + px * 0.35;
                 float d = abs(u - x);
-                cov = max(cov, 1.0 - smoothstep(width * 0.5, width * 0.5 + px, d));
+                float rootFade = S.ramp > 0.5 ? 1.0 : smoothstep(0.0, 0.1, t + h1(j, S.seed + 19u) * 0.05);
+                cov = max(cov, (1.0 - smoothstep(width * 0.5, width * 0.5 + px, d)) * rootFade);
             }
         }
         out.write(float4(cov), gid);

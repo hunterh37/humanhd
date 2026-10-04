@@ -51,7 +51,7 @@ public enum Human {
             case .eye: out.append(try EyeMaterial.eyeball(a.eyes))
             case .cornea: out.append(EyeMaterial.cornea())
             case .eyelash: out.append(try EyeMaterial.lashes(color: a.hairColor))
-            case .hair: out.append(try HairMaterial.make(p.material == "hairshell" ? .shell : .cards, color: a.hairColor))
+            case .hair: out.append(p.material == "hairshell" ? try HairMaterial.make(.shell, color: a.hairColor) : try await HairMaterial.cards(color: a.hairColor))
             case .garment:
                 let cache = RealMaterialCache.shared
                 if cache.overrides[p.material] == nil { cache.overrides[p.material] = GarmentFabrics.spec(p.material) }
@@ -93,21 +93,71 @@ public enum HairMaterial {
         m.roughness = 0.42
         m.specular = 0.45
         m.faceCulling = .none
-        switch kind {
-        case .cards:
-            var s = StrandPainter.Spec(); s.strands = 34; s.width = 0.045; s.clump = 0.25; s.drift = 0.06; s.minLength = 0.78; s.seed = 9
-            let t = try strands(1, s, w: 512, h: 1024)
-            m.blending = .transparent(opacity: .init(scale: 1, texture: .init(t)))
-            m.opacityThreshold = 0.35
-        case .shell:
-            // Opacity ramps in from the hairline (uv.x carries the scalp field).
-            var s = StrandPainter.Spec(); s.strands = 40; s.width = 0.09; s.clump = 0; s.drift = 0.1; s.minLength = 1; s.seed = 4; s.ramp = 1
-            let t = try strands(2, s, w: 256, h: 256)
-            m.blending = .transparent(opacity: .init(scale: 1, texture: .init(t)))
-            m.opacityThreshold = 0.25
-            m.baseColor = .init(tint: .init(linear: color * 0.8))
-            m.textureCoordinateTransform = .init(offset: .zero, scale: SIMD2(30, 1))
-        }
+        var s = StrandPainter.Spec(); s.strands = 40; s.width = 0.09; s.clump = 0; s.drift = 0.1; s.minLength = 1; s.seed = 4; s.ramp = 1
+        let t = try strands(2, s, w: 256, h: 256)
+        m.blending = .transparent(opacity: .init(scale: 1, texture: .init(t)))
+        m.opacityThreshold = 0.25
+        m.baseColor = .init(tint: .init(linear: color * 0.8))
+        m.textureCoordinateTransform = .init(offset: .zero, scale: SIMD2(30, 1))
         return m
+    }
+
+    static func cardsUSDA() -> String {
+        var g = GraphBuilder(material: "Hair")
+        let cov = g.input("asset", "Coverage", "@@")
+        let color = g.input("float3", "HairColor", "(0.05, 0.03, 0.02)")
+        let sun = g.input("float3", "SunDirection", "(0, -1, 0)")
+        let spec1 = g.input("float", "Highlight", "0.55")
+        let threshold = g.input("float", "Threshold", "0.4")
+        let uv = g.texcoord(0)
+        let c = g.xyzw(g.sample(cov, uv))
+        let v = g.xy(uv)[1]
+        // Roots (v near 1) darker; per-card brightness from u.
+        let u = g.xy(uv)[0]
+        let cardVar = g.add("0.85", g.mul(g.node("ND_sin_float", [("float", "in", g.mul(u, "37.7"))], out: "float"), "0.15"))
+        let rootShade = g.add("0.6", g.mul(v, "0.45"))
+        let base = g.scale3(color, g.mul(cardVar, rootShade))
+        // Kajiya-Kay highlight along the strand (card v axis = bitangent), as emissive.
+        let tangent = g.normalize3(g.node("ND_bitangent_vector3", [("string", "space", "\"world\"")], out: "float3"))
+        let wp = g.node("ND_position_vector3", [("string", "space", "\"world\"")], out: "float3")
+        let cam = g.node("ND_realitykit_cameraposition_vector3", [], out: "float3")
+        let toEye = g.normalize3(g.node("ND_subtract_vector3", [("float3", "in1", cam), ("float3", "in2", wp)], out: "float3"))
+        let toSun = g.scale3(sun, "-1")
+        let h = g.normalize3(g.add3(toEye, toSun))
+        let th = g.dot3(tangent, h)
+        let sinTH = g.node("ND_sqrt_float", [("float", "in", g.node("ND_max_float", [("float", "in1", g.sub("1", g.mul(th, th))), ("float", "in2", "0")], out: "float"))], out: "float")
+        let primary = g.pow(sinTH, "90")
+        let th2 = g.add(th, "0.12")
+        let sin2 = g.node("ND_sqrt_float", [("float", "in", g.node("ND_max_float", [("float", "in1", g.sub("1", g.mul(th2, th2))), ("float", "in2", "0")], out: "float"))], out: "float")
+        let secondary = g.pow(sin2, "30")
+        let lit = g.clamp01(g.add(g.mul(g.dot3(toSun, g.normalize3(g.node("ND_normal_vector3", [("string", "space", "\"world\"")], out: "float3"))), "0.5"), "0.6"))
+        let hl = g.add3(g.scale3(g.node("ND_combine3_vector3", [("float", "in1", "1"), ("float", "in2", "0.95"), ("float", "in3", "0.88")], out: "float3"), g.mul(primary, g.mul(spec1, "0.35"))),
+                        g.scale3(g.mul3(color, g.node("ND_combine3_vector3", [("float", "in1", "3"), ("float", "in2", "2.5"), ("float", "in3", "2")], out: "float3")), g.mul(secondary, spec1)))
+        let emissive = g.scale3(hl, g.mul(lit, c[0]))
+        let surface = g.node("ND_realitykit_pbr_surfaceshader", [
+            ("color3f", "baseColor", g.toColor(base)), ("float", "roughness", "0.5"), ("float", "specular", "0.3"), ("float", "metallic", "0"),
+            ("float", "opacity", c[0]), ("float", "opacityThreshold", threshold), ("color3f", "emissiveColor", g.toColor(emissive)),
+            ("bool", "hasPremultipliedAlpha", "0"),
+        ], out: "token")
+        return g.document(surface: surface)
+    }
+
+    /// Hair cards with a strand-aligned highlight and darker roots.
+    public static func cards(color: SIMD3<Float>) async throws -> any RealityKit.Material {
+        var s = StrandPainter.Spec(); s.strands = 34; s.width = 0.045; s.clump = 0.25; s.drift = 0.06; s.minLength = 0.78; s.seed = 9
+        let t = try strands(1, s, w: 512, h: 1024)
+        do {
+            var m = try await GraphCache.material("hair", cardsUSDA, name: "Hair")
+            try m.setParameter(name: "Coverage", value: .textureResource(t))
+            try m.setParameter(name: "HairColor", value: .simd3Float(color))
+            try m.setParameter(name: "SunDirection", value: .simd3Float(RealWind.sunTravel))
+            m.faceCulling = .none
+            return m
+        } catch {
+            var m = PhysicallyBasedMaterial()
+            m.baseColor = .init(tint: .init(linear: color)); m.roughness = 0.42; m.faceCulling = .none
+            m.blending = .transparent(opacity: .init(scale: 1, texture: .init(t))); m.opacityThreshold = 0.35
+            return m
+        }
     }
 }

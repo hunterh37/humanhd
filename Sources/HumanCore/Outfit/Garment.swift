@@ -171,7 +171,7 @@ public enum GarmentFitter {
             if c.torso && !isArm && !isFoot && !isHead && (!isLeg || p.y > lm.crotchY + 0.04) {
                 let bottom = c.torsoBottom <= 1 ? lerpY(lm.crotchY, lm.waistY, c.torsoBottom) : lerpY(lm.waistY, lm.chestY, c.torsoBottom - 1)
                 let top = lm.neckY - c.neckDepth - (p.z > 0 ? c.neckScoop * max(0, 1 - abs(p.x) / 0.09) : 0)
-                if p.y > bottom && p.y < top { inside = true; t = min(1, (p.y - bottom) / 0.25) }
+                if p.y > bottom && p.y < top { inside = true; t = 1 }
                 // Strapless / sleeveless top edge at the armpit when no sleeves.
                 if c.sleeves <= 0 && abs(p.x) > lm.shoulderX * 0.82 && p.y > lm.armpitY { inside = false }
             }
@@ -179,7 +179,8 @@ public enum GarmentFitter {
             if c.torso && name.hasPrefix("clavicle") { inside = p.y < lm.neckY - c.neckDepth || inside }
             if c.sleeves > 0 && isArm && !isHand {
                 let a = armT()
-                if a < c.sleeves { inside = true; t = max(0, (c.sleeves - a) / 0.6) }
+                // Sleeves flare a third as much as legs.
+                if a < c.sleeves { inside = true; t = 1 - (1 - max(0, (c.sleeves - a) / 0.6)) * 0.55 }
             }
             if c.hands && isHand { inside = true }
             if c.pelvis && !isArm && !isHead && !isFoot {

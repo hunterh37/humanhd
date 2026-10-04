@@ -35,7 +35,7 @@ public enum GarmentFabrics {
         // Technical nylon (jackets).
         MaterialSpec(key: "garment.nylon", program: .fabricWeave).with {
             $0.colorA = linear(0x2A3A2E); $0.colorB = linear(0x2A3A2E, 0); $0.colorC = linear(0x504840, 0.06)
-            $0.knobs = V4(80, 0, 0.45, 10); $0.seed = 106; $0.tileSize = 0.04; $0.normalStrength = 1; $0.roughness = 0.45; $0.twoSided = true
+            $0.knobs = V4(80, 0, 0.62, 10); $0.seed = 106; $0.tileSize = 0.04; $0.normalStrength = 1; $0.roughness = 0.62; $0.twoSided = true
         },
         // Wool suiting / coating.
         MaterialSpec(key: "garment.flannel", program: .fabricWeave).with {
@@ -88,9 +88,9 @@ public enum Wardrobe {
     public static let shirt = Garment(id: "shirt", name: "Button shirt", layer: 1, coverage: .init().with { $0.torso = true; $0.sleeves = 1.95; $0.torsoBottom = 0.5; $0.neckDepth = 0.012 }, material: "garment.poplin")
         .with { $0.offset = 0.006; $0.flare = 0.015; $0.folds = 0.006 }
     public static let sweater = Garment(id: "sweater", name: "Crew sweater", layer: 2, coverage: .init().with { $0.torso = true; $0.sleeves = 1.92; $0.torsoBottom = 0.55; $0.neckDepth = 0.015 }, material: "garment.wool")
-        .with { $0.offset = 0.011; $0.flare = 0.008; $0.folds = 0.007; $0.hem = 0.006 }
+        .with { $0.offset = 0.011; $0.flare = 0.008; $0.folds = 0.007; $0.hem = 0.006; $0.drape = 20 }
     public static let jacket = Garment(id: "jacket", name: "Field jacket", layer: 3, coverage: .init().with { $0.torso = true; $0.sleeves = 1.9; $0.torsoBottom = 0.45; $0.neckDepth = 0.0; $0.neckScoop = 0.06 }, material: "garment.nylon")
-        .with { $0.offset = 0.02; $0.flare = 0.02; $0.folds = 0.01; $0.hem = 0.008; $0.drape = 16 }
+        .with { $0.offset = 0.02; $0.flare = 0.02; $0.folds = 0.01; $0.hem = 0.008; $0.drape = 40 }
     public static let leatherJacket = jacket.with { $0.id = "leather-jacket"; $0.name = "Leather jacket"; $0.material = "garment.leather"; $0.coverage.torsoBottom = 0.45; $0.offset = 0.016; $0.folds = 0.006 }
     public static let coat = jacket.with { $0.id = "coat"; $0.name = "Overcoat"; $0.material = "garment.flannel"; $0.coverage.legs = 1.1; $0.offset = 0.022; $0.flare = 0.06 }
     public static let jeans = Garment(id: "jeans", name: "Jeans", layer: 1, coverage: .init().with { $0.pelvis = true; $0.rise = 0.75; $0.legs = 1.97 }, material: "garment.denim")

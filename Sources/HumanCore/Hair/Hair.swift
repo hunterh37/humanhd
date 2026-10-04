@@ -31,8 +31,8 @@ public struct HairStyle: Codable, Sendable, Hashable {
     public static let buzz = HairStyle(.buzz, length: 0.004)
     public static let short = HairStyle(.short, length: 0.06).with { $0.volume = 0.01; $0.density = 14; $0.cardWidth = 0.012 }
     public static let crop = HairStyle(.crop, length: 0.035).with { $0.volume = 0.007; $0.density = 16; $0.cardWidth = 0.01; $0.fringe = 0.4 }
-    public static let bob = HairStyle(.bob, length: 0.2).with { $0.volume = 0.016; $0.density = 11; $0.fringe = 0.6; $0.part = 0 }
-    public static let long = HairStyle(.long, length: 0.42).with { $0.volume = 0.014; $0.density = 11; $0.part = 0.3 }
+    public static let bob = HairStyle(.bob, length: 0.2).with { $0.volume = 0.016; $0.density = 13; $0.part = 0.25 }
+    public static let long = HairStyle(.long, length: 0.42).with { $0.volume = 0.014; $0.density = 13; $0.part = 0.3 }
     public static let wavy = long.with { $0.curl = 0.35; $0.volume = 0.022 }
     public static let ponytail = HairStyle(.ponytail, length: 0.32).with { $0.volume = 0.006; $0.density = 12 }
     public static let bun = HairStyle(.bun, length: 0.12).with { $0.volume = 0.006; $0.density = 12 }
@@ -64,7 +64,7 @@ public enum HairBuilder {
             var shell = SkinnedMesh()
             for t in stride(from: 0, to: skin.indices.count, by: 3) {
                 let tri = [skin.indices[t], skin.indices[t + 1], skin.indices[t + 2]]
-                guard tri.allSatisfy({ Int($0) < n && scalp[Int($0)] > 0.35 }) else { continue }
+                guard tri.allSatisfy({ Int($0) < n }), tri.contains(where: { scalp[Int($0)] > 0.12 }) else { continue }
                 for v in tri {
                     if remap[v] == nil {
                         remap[v] = UInt32(shell.positions.count)
@@ -73,7 +73,7 @@ public enum HairBuilder {
                         shell.normals.append(src.normals[i]); shell.tangents.append(src.tangents[i])
                         // u: around the head, v: hairline fade (from the scalp field).
                         let c = src.positions[i]
-                        shell.uvs.append(V2(atan2(c.x, c.z) * 0.5 + c.y * 0.37, 1 - smoothstep(0.35, 0.85, scalp[i])))
+                        shell.uvs.append(V2(atan2(c.x, c.z) * 0.5 + c.y * 0.37, smoothstep(0.22, 0.8, scalp[i])))
                         shell.joints.append(src.joints[i]); shell.weights.append(src.weights[i])
                         shell.faceUVs.append(.zero); shell.aux.append(.zero)
                     }
@@ -145,14 +145,16 @@ public enum HairBuilder {
             // Flow: away from the crown along the surface, then the part line pushes sideways.
             var flow = r.p - crown
             flow -= r.n * simd_dot(flow, r.n)
-            let front = r.p.z > hc.z + hr.z * 0.25 && r.p.y > hc.y
+            let front = r.p.z > hc.z - hr.z * 0.15 && r.p.y > hc.y - hr.y * 0.1
             if front {
                 let s: Float = r.p.x >= partX ? 1 : -1
                 flow = style.fringe > 0 && abs(r.p.x - partX) < 0.035
                     ? simd_normalize(V3(s * 0.4, -0.4, 0.6 * style.fringe))
-                    : simd_normalize(V3(s, 0.1, -0.7))
+                    : simd_normalize(V3(s, -0.2, -0.45 - 0.5 * max(0, (r.p.z - hc.z) / hr.z)))
             }
-            var dir = simd_normalize(r.n * 0.3 + simd_normalize(flow + V3(0, -0.05, 0)))
+            var fl = flow + V3(0, -0.04, 0)
+            if simd_length(fl) < 0.02 { fl = V3(r.p.x - partX, 0, -0.03) }
+            var dir = simd_normalize(r.n * 0.08 + simd_normalize(fl))
             let jitter = 0.85 + 0.3 * rng.float()
             var len = style.length * jitter
             if style.kind == .bob || style.kind == .long {
@@ -172,7 +174,11 @@ public enum HairBuilder {
                     target = simd_length(toTie) > 0.01 ? simd_normalize(toTie) : V3(0, -1, 0)
                 default:
                     let g = min(1, t * 1.6 + (style.length > 0.1 ? 0.3 : 0))
-                    target = simd_normalize(dir + V3(0, -1.2 * g, 0) * (style.length > 0.08 ? 1 : 0.35))
+                    // Over the face the hair is combed along its flow (side/back); it falls freely
+                    // only once it has cleared the face.
+                    let overFace = p.z > hc.z + hr.z * 0.25 && abs(p.x) < hr.x * 0.8 && style.fringe == 0
+                    let comb = simd_normalize(flow + V3(0, -0.05, 0))
+                    target = overFace ? comb : simd_normalize(dir + V3(0, -1.2 * g, 0) * (style.length > 0.08 ? 1 : 0.35))
                 }
                 dir = simd_normalize(dir * 0.55 + target * 0.45)
                 let prev = p
@@ -221,7 +227,7 @@ public enum HairBuilder {
                 cards.positions.append(q - side * w * 0.5); cards.positions.append(q + side * w * 0.5)
                 cards.normals.append(outN); cards.normals.append(outN)
                 cards.tangents.append(V4(side, 1)); cards.tangents.append(V4(side, 1))
-                cards.uvs.append(V2(u0, 1 - t)); cards.uvs.append(V2(u0 + 0.25, 1 - t))
+                cards.uvs.append(V2(u0, t)); cards.uvs.append(V2(u0 + 0.25, t))
                 // Skinning: head above the jaw; long hair hands over to neck and chest.
                 let below = smoothstep(neckY + 0.06, neckY - 0.12, q.y)
                 let toChest = smoothstep(neckY - 0.05, shoulderY - 0.1, q.y)
