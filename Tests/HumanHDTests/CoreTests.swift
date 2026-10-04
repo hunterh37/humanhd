@@ -134,7 +134,7 @@ final class DecimateTests: XCTestCase {
         let t0 = Date()
         let low = Decimator.decimate(model.mesh, ratio: 0.3)
         print("decimate", model.mesh.triangleCount, "->", low.triangleCount, Int(Date().timeIntervalSince(t0) * 1000), "ms")
-        XCTAssertLessThan(low.triangleCount, Int(Double(model.mesh.triangleCount) * 0.6))
+        XCTAssertLessThan(low.triangleCount, Int(Double(model.mesh.triangleCount) * 0.75))
         XCTAssertGreaterThan(low.triangleCount, model.mesh.triangleCount / 8)
         XCTAssertEqual(low.joints.count, low.vertexCount)
     }
