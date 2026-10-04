@@ -180,7 +180,7 @@ public enum HumanSkinning {
 /// Distance-based cost control (meters from `RealViewer.position`).
 public struct HumanLODPolicy: Sendable {
     /// Mesh level i is used below meshDistances[i].
-    public var meshDistances: [Float] = [3]
+    public var meshDistances: [Float] = [3, 10]
     /// Facial animation (expressions, speech, blinks) inside this distance.
     public var faceDistance: Float = 6
     /// Gaze, fingers and fine idle motion inside this distance.

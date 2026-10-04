@@ -24,10 +24,16 @@ public enum Human {
         HumanHDSetup.register()
         let model = await Task.detached(priority: .userInitiated) { HumanModel(spec) }.value
         let ch = try await make(model, animate: animate, seed: seed)
-        if lods && spec.subdivision > 0 {
-            let coarse = await Task.detached(priority: .utility) { HumanModel(spec.with { $0.subdivision = 0 }) }.value
-            try ch.addLevel(coarse.mesh, materials: try await materials(for: coarse.mesh.parts.filter { !$0.indices.isEmpty }, spec: spec),
-                            creases: coarse.creases.map { CreaseDriver($0.0, $0.1, crease: $0.2, stretch: $0.3) })
+        if lods {
+            // Coarse skin (level 1), then a quadric-decimated crowd mesh (level 2) built in the background.
+            let coarse = spec.subdivision > 0 ? await Task.detached(priority: .utility) { HumanModel(spec.with { $0.subdivision = 0 }) }.value : model
+            if spec.subdivision > 0 {
+                try ch.addLevel(coarse.mesh, materials: try await materials(for: coarse.mesh.parts.filter { !$0.indices.isEmpty }, spec: spec),
+                                creases: coarse.creases.map { CreaseDriver($0.0, $0.1, crease: $0.2, stretch: $0.3) })
+            }
+            let low = await Task.detached(priority: .utility) { Decimator.decimate(coarse.mesh, ratio: 0.35) }.value
+            try ch.addLevel(low, materials: try await materials(for: low.parts, spec: spec))
+            if spec.subdivision == 0 { ch.lodPolicy?.meshDistances = [10] }
         }
         return ch
     }

@@ -127,3 +127,15 @@ final class CoreTests: XCTestCase {
         XCTAssertGreaterThan(bvh.joints.count, 100)
     }
 }
+
+final class DecimateTests: XCTestCase {
+    func testDecimateCrowdLOD() {
+        let model = HumanModel(HumanSpec().with { $0.subdivision = 0; $0.outfit = .casual; $0.hair = .short })
+        let t0 = Date()
+        let low = Decimator.decimate(model.mesh, ratio: 0.3)
+        print("decimate", model.mesh.triangleCount, "->", low.triangleCount, Int(Date().timeIntervalSince(t0) * 1000), "ms")
+        XCTAssertLessThan(low.triangleCount, Int(Double(model.mesh.triangleCount) * 0.6))
+        XCTAssertGreaterThan(low.triangleCount, model.mesh.triangleCount / 8)
+        XCTAssertEqual(low.joints.count, low.vertexCount)
+    }
+}

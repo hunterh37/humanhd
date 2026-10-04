@@ -206,7 +206,15 @@ func lookCommand(_ args: [String]) async throws {
     if args.contains("nude") { spec.outfit = .none }
     if let hc = args.first(where: { $0.hasPrefix("haircolor=") })?.dropFirst(10), let v = UInt32(hc, radix: 16) { spec.appearance.hairColor = LinearColor(hex: v) }
     let t0 = Date()
-    let ch = try await Human.make(spec, animate: true, seed: 2)
+    var ch = try await Human.make(spec, animate: true, seed: 2, lods: false)
+    if let r = args.first(where: { $0.hasPrefix("decimate=") })?.dropFirst(9), let ratio = Float(r) {
+        let model = HumanModel(spec.with { $0.subdivision = 0 })
+        let low = Decimator.decimate(model.mesh, ratio: ratio)
+        ch = try HumanCharacter(body: model.body, mesh: low)
+        ch.setMaterials(try await Human.materials(for: ch.parts, spec: spec))
+        ch.dynamics = model.chains.isEmpty ? nil : ChainSimulator(chains: model.chains, skeleton: model.body.skeleton)
+        ch.animate(seed: 2)
+    }
     ch.animator?.rootMotion = false
     let build = Date().timeIntervalSince(t0)
     if args.contains("walk") { ch.animator?.core.speed = 1.3 }
