@@ -51,6 +51,10 @@ func run() async throws {
             print(name, Int(Date().timeIntervalSince(t0) * 1000), "ms")
             for (t, k) in [(m.a, "a"), (m.n, "n"), (m.p, "p")] { if let img = synth.cgImage(t) { writePNG(img, "out/skin-\(name)-\(k).png") } }
         }
+    case "posetest":
+        try await poseTestCommand(args)
+    case "anim":
+        try await animCommand(args)
     case "render":
         try await renderCommand(args)
     default:
