@@ -17,7 +17,7 @@ public final class CharacterAnimator {
     public var speed: Float = 0
     /// Where to look (character space). nil = straight ahead.
     public var lookTarget: V3? { get { gaze.target } set { gaze.target = newValue } }
-    public var expression: Expression = .neutral
+    public var expression: FacialExpression = .neutral
     public var expressionWeight: Float = 1
     /// Additional face units (ARKit-style rigs, custom expressions).
     public var faceUnits: [FaceRig.Unit: Float] = [:]
@@ -115,7 +115,7 @@ public final class CharacterAnimator {
         var units: [FaceRig.Unit: Float] = [:]
         if lod < 2 { gaze.update(&p, anatomy: a, face: face, dt: dt, units: &units, lod: lod) }
         if lod < 1 {
-            // Expression eases in/out.
+            // FacialExpression eases in/out.
             let want = expression.units.mapValues { $0 * expressionWeight }
             var keys = Set(exprWeights.keys); keys.formUnion(want.keys)
             for k in keys {
@@ -141,7 +141,7 @@ public final class CharacterAnimator {
         let a = anatomy
         for side in Side.allCases {
             a.arm(&p, side, flex: 2, abduct: -40, rotate: -10)
-            a.elbow(&p, side, flex: 12 - restElbow, pronate: 20)
+            a.elbow(&p, side, flex: 12 - restElbow, pronate: -38)
             a.wristBend(&p, side, flex: 6, deviate: 4)
             a.hand(&p, side, curl: 0.28, spread: 0.2, thumb: 0.35)
             a.rotate(&p, a.clavicle[side.rawValue], axis: V3(0, 0, 1), degrees: -3, side: side)

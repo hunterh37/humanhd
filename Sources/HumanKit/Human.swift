@@ -19,10 +19,17 @@ public enum Human {
     public static var quality: HumanQuality = .balanced
 
     /// Builds geometry off the main actor, then uploads and creates materials.
-    public static func make(_ spec: HumanSpec, animate: Bool = true, seed: UInt64 = 1) async throws -> HumanCharacter {
+    /// - Parameter lods: also build a coarse level (unsubdivided skin) used beyond `HumanLODPolicy.meshDistances`.
+    public static func make(_ spec: HumanSpec, animate: Bool = true, seed: UInt64 = 1, lods: Bool = true) async throws -> HumanCharacter {
         HumanHDSetup.register()
         let model = await Task.detached(priority: .userInitiated) { HumanModel(spec) }.value
-        return try await make(model, animate: animate, seed: seed)
+        let ch = try await make(model, animate: animate, seed: seed)
+        if lods && spec.subdivision > 0 {
+            let coarse = await Task.detached(priority: .utility) { HumanModel(spec.with { $0.subdivision = 0 }) }.value
+            try ch.addLevel(coarse.mesh, materials: try await materials(for: coarse.mesh.parts.filter { !$0.indices.isEmpty }, spec: spec),
+                            creases: coarse.creases.map { CreaseDriver($0.0, $0.1, crease: $0.2, stretch: $0.3) })
+        }
+        return ch
     }
 
     public static func make(_ model: HumanModel, animate: Bool = true, seed: UInt64 = 1) async throws -> HumanCharacter {

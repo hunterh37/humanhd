@@ -38,7 +38,7 @@ func renderCommand(_ args: [String]) async throws {
         rot("upperarm01.L", 40, V3(0, 0, 1)); rot("upperleg01.R", -30, V3(1, 0, 0)); rot("lowerleg01.R", 50, V3(1, 0, 0))
         rot("neck01", 20, V3(0, 0, 1))
     }
-    if let e = args.first(where: { $0.hasPrefix("expr=") })?.dropFirst(5), let ex = Expression(rawValue: String(e)) {
+    if let e = args.first(where: { $0.hasPrefix("expr=") })?.dropFirst(5), let ex = FacialExpression(rawValue: String(e)) {
         let face = FaceRig(skeleton: body.skeleton)
         print("face units", face.units.count, "bones", face.bones.count)
         face.apply(ex.units, to: &ch.pose)
@@ -164,8 +164,9 @@ func poseTestCommand(_ args: [String]) async throws {
     let body = HumanBody(.averageFemale, subdivision: 0)
     let a = Anatomy(body.skeleton)
     let tests: [(String, (inout Pose) -> Void)] = [
-        ("abd-40", { for sd in Side.allCases { a.arm(&$0, sd, abduct: -40) } }),
-        ("abd-40 el-30", { for sd in Side.allCases { a.arm(&$0, sd, abduct: -40); a.elbow(&$0, sd, flex: -30) } }),
+        ("pron+40", { for sd in Side.allCases { a.arm(&$0, sd, abduct: -40); a.elbow(&$0, sd, flex: -28, pronate: 40); a.hand(&$0, sd, curl: 0.3) } }),
+        ("pron-40", { for sd in Side.allCases { a.arm(&$0, sd, abduct: -40); a.elbow(&$0, sd, flex: -28, pronate: -40); a.hand(&$0, sd, curl: 0.3) } }),
+        ("rot+30", { for sd in Side.allCases { a.arm(&$0, sd, abduct: -40, rotate: 30); a.elbow(&$0, sd, flex: -28); a.hand(&$0, sd, curl: 0.3) } }),
         ("anim", { p in let an = CharacterAnimator(skeleton: body.skeleton); an.update(&p, dt: 0.016) }),
     ]
     let env = try RealEnvironment(SunSky.afternoon, skybox: true)
@@ -178,7 +179,7 @@ func poseTestCommand(_ args: [String]) async throws {
             let preview = try RealPreview(environment: env)
             let root = Entity(); root.addChild(ch.entity); env.illuminate(root); preview.add(root)
             let r = az * .pi / 180
-            preview.look(from: V3(0, 1.0, 0) + V3(sin(r), 0, cos(r)) * 3.0, at: V3(0, 0.95, 0), fov: 40)
+            preview.look(from: V3(0, 0.85, 0) + V3(sin(r), 0, cos(r)) * 1.2, at: V3(0, 0.8, 0), fov: 40)
             if let img = try await preview.render(width: 240, height: 420, frames: 2) { tiles.append(img) }
         }
     }

@@ -34,6 +34,17 @@ public final class HumanCharacter {
     var gpu: SkinnedGPUMesh
     var dq: [SIMD4<Float>]
     var frameCounter = 0
+    var pendingDT: Float = 0
+
+    /// Mesh levels of detail: level 0 is the hero mesh; coarser levels are added with `addLevel`.
+    public struct Level {
+        public let gpu: SkinnedGPUMesh
+        public let materials: [any RealityKit.Material]
+    }
+    public private(set) var levels: [Level] = []
+    public private(set) var level = 0
+    /// Distance policy (nil: never switch automatically).
+    public var lodPolicy: HumanLODPolicy? = HumanLODPolicy()
 
     /// - Parameter mesh: the full character mesh (body plus outfit and hair) built in HumanCore.
     public init(body: HumanBody, mesh: SkinnedMesh? = nil, materials: [any RealityKit.Material]? = nil, creases: [CreaseDriver]? = nil) throws {
@@ -48,11 +59,38 @@ public final class HumanCharacter {
         entity = ModelEntity(mesh: gpu.resource, materials: mats)
         entity.name = "human"
         entity.components.set(HumanComponent(character: self))
+        levels = [Level(gpu: gpu, materials: mats)]
+    }
+
+    /// Adds a coarser mesh level (same skeleton) with its materials.
+    public func addLevel(_ m: SkinnedMesh, materials: [any RealityKit.Material], creases: [CreaseDriver]? = nil) throws {
+        guard let skinner = GPUSkinner.shared else { throw HumanKitError.noMetal }
+        levels.append(Level(gpu: try SkinnedGPUMesh(m, creases: creases, device: skinner.device), materials: materials))
+    }
+
+    /// Switches the drawn mesh level.
+    public func setLevel(_ i: Int) {
+        let l = max(0, min(levels.count - 1, i))
+        guard l != level else { return }
+        level = l
+        gpu = levels[l].gpu
+        entity.model = ModelComponent(mesh: gpu.resource, materials: levels[l].materials)
+        poseDirty = true
+    }
+
+    /// Applies the LOD policy for a viewer distance.
+    func applyLOD(distance d: Float) {
+        guard let p = lodPolicy else { return }
+        setLevel(p.meshDistances.firstIndex(where: { d < $0 }) ?? p.meshDistances.count)
+        animationLOD = d < p.faceDistance ? 0 : d < p.detailDistance ? 1 : 2
+        skinInterval = p.skipFrames.last(where: { d >= $0.0 })?.1 ?? 0
+        entity.isEnabled = p.cullDistance <= 0 || d < p.cullDistance
     }
 
     /// Replace materials (one per mesh part, in `mesh.parts` order).
     public func setMaterials(_ m: [any RealityKit.Material]) {
         entity.model?.materials = m
+        if !levels.isEmpty { levels[level] = Level(gpu: levels[level].gpu, materials: m) }
     }
 
     public var parts: [SkinnedMesh.Part] { gpu.parts }
@@ -60,11 +98,16 @@ public final class HumanCharacter {
     /// Advance the driver and refresh bone dual quaternions. Returns true when the mesh needs skinning.
     func tick(_ dt: Float) -> Bool {
         frameCounter += 1
+        pendingDT += dt
+        // Distant characters animate and skin on fewer frames (staggered by identity).
+        let stagger = ObjectIdentifier(self).hashValue & 7
+        guard skinInterval == 0 || (frameCounter + stagger) % (skinInterval + 1) == 0 else { return false }
         if let driver {
-            driver.update(&pose, skeleton: body.skeleton, dt: dt, lod: animationLOD)
+            driver.update(&pose, skeleton: body.skeleton, dt: pendingDT, lod: animationLOD)
             poseDirty = true
         }
-        guard poseDirty, skinInterval == 0 || frameCounter % (skinInterval + 1) == 0 else { return false }
+        pendingDT = 0
+        guard poseDirty else { return false }
         poseDirty = false
         let skin = pose.skinning(body.skeleton)
         for (i, s) in skin.enumerated() {
@@ -96,7 +139,11 @@ public struct HumanSystem: System {
     public mutating func update(context: SceneUpdateContext) {
         let dt = Float(context.deltaTime)
         let chars = context.entities(matching: Self.query, updatingSystemWhen: .rendering).compactMap { $0.components[HumanComponent.self]?.character }
-        MainActor.assumeIsolated { HumanSkinning.run(chars, dt: dt) }
+        MainActor.assumeIsolated {
+            let viewer = RealViewer.position
+            for c in chars { c.applyLOD(distance: simd_distance(c.entity.position(relativeTo: nil), viewer)) }
+            HumanSkinning.run(chars, dt: dt)
+        }
     }
 }
 
@@ -114,6 +161,21 @@ public enum HumanSkinning {
         if wait { cb.waitUntilCompleted() }
         return cb
     }
+}
+
+/// Distance-based cost control (meters from `RealViewer.position`).
+public struct HumanLODPolicy: Sendable {
+    /// Mesh level i is used below meshDistances[i].
+    public var meshDistances: [Float] = [3]
+    /// Facial animation (expressions, speech, blinks) inside this distance.
+    public var faceDistance: Float = 6
+    /// Gaze, fingers and fine idle motion inside this distance.
+    public var detailDistance: Float = 14
+    /// (distance, frames skipped between updates).
+    public var skipFrames: [(Float, Int)] = [(14, 1), (28, 2), (45, 3)]
+    /// Hide beyond (0 = never).
+    public var cullDistance: Float = 90
+    public init() {}
 }
 
 public enum HumanHDSetup {

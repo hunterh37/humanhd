@@ -72,7 +72,7 @@ public struct FaceRig: Sendable {
 }
 
 /// Named facial expressions as unit weights.
-public enum Expression: String, CaseIterable, Sendable, Codable {
+public enum FacialExpression: String, CaseIterable, Sendable, Codable {
     case neutral, smile, grin, sad, angry, surprised, disgusted, fear, pout, smirk, thinking
 
     public var units: [FaceRig.Unit: Float] {

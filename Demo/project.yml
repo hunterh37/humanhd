@@ -1,0 +1,40 @@
+name: HumanHDDemo
+options:
+  bundleIdPrefix: io.medvr.humanhd
+  deploymentTarget:
+    visionOS: "26.0"
+  createIntermediateGroups: true
+packages:
+  HumanHD:
+    path: ..
+  RealityHD:
+    path: ../../RealForge
+targets:
+  HumanHDDemo:
+    type: application
+    platform: visionOS
+    sources: [HumanHDDemo]
+    dependencies:
+      - package: HumanHD
+        product: HumanHD
+      - package: RealityHD
+        product: RealityHD
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.medvr.humanhd.demo
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: HumanHD
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "7"
+    info:
+      path: HumanHDDemo/Info.plist
+      properties:
+        NSWorldSensingUsageDescription: Characters look at you and use head distance for level of detail.
+        UIApplicationSceneManifest:
+          UIApplicationPreferredDefaultSceneSessionRole: UIWindowSceneSessionRoleApplication
+          UIApplicationSupportsMultipleScenes: true
+          UISceneConfigurations:
+            UISceneSessionRoleImmersiveSpaceApplication:
+              - UISceneInitialImmersionStyle: UIImmersionStyleMixed

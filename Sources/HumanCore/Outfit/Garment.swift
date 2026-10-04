@@ -23,6 +23,9 @@ public struct Garment: Codable, Sendable, Hashable, Identifiable {
     public var hem: Float = 0.003
     /// Hide body skin under this garment (performance and no poke-through).
     public var hidesBody = true
+    /// Relaxation passes: cloth bridges hollows (between breasts, around the navel, spine groove)
+    /// instead of shrink-wrapping them. 0 = skin-tight (leggings), 6-12 = shirts, 16+ = coats.
+    public var drape: Int = 8
 
     public init(id: String, name: String, layer: Int, coverage: Coverage, material: String) {
         self.id = id; self.name = name; self.layer = layer; self.coverage = coverage; self.material = material
@@ -165,7 +168,7 @@ public enum GarmentFitter {
             }
             var inside = false
             var t: Float = 1
-            if c.torso && !isArm && !isLeg && !isFoot && !isHead {
+            if c.torso && !isArm && !isFoot && !isHead && (!isLeg || p.y > lm.crotchY + 0.04) {
                 let bottom = c.torsoBottom <= 1 ? lerpY(lm.crotchY, lm.waistY, c.torsoBottom) : lerpY(lm.waistY, lm.chestY, c.torsoBottom - 1)
                 let top = lm.neckY - c.neckDepth - (p.z > 0 ? c.neckScoop * max(0, 1 - abs(p.x) / 0.09) : 0)
                 if p.y > bottom && p.y < top { inside = true; t = min(1, (p.y - bottom) / 0.25) }
@@ -227,6 +230,7 @@ public enum GarmentFitter {
         // Build the shell: remap vertices.
         var m = SkinnedMesh()
         var remap = [Int: UInt32]()
+        var foldAmount: [Float] = [], minOff: [Float] = []
         let src = body.mesh
         let seed = UInt32(truncatingIfNeeded: g.id.hashValue & 0xFFFF)
         for v in used.sorted() {
@@ -235,8 +239,10 @@ public enum GarmentFitter {
             let hemFade = Float(min(ring[v], 4)) / 4
             // Folds: anisotropic noise around the limb axis, deeper toward joints.
             let fold = (Noise.perlin(V3(c.x * 9, c.y * 38, c.z * 9), seed: seed) * 0.7 + Noise.perlin(c * 60, seed: seed &+ 1) * 0.3) * g.folds
-            let off = g.offset + layerOffset + g.flare * (1 - hemT[v]) * (1 - hemT[v]) + max(-g.offset * 0.6, fold)
+            let off = g.offset + layerOffset + g.flare * (1 - hemT[v]) * (1 - hemT[v])
             m.positions.append(p + nrm * off)
+            foldAmount.append(max(-g.offset * 0.6, fold))
+            minOff.append(off * 0.7)
             m.normals.append(nrm)
             m.tangents.append(src.tangents[v])
             // Fabric UVs in meters: wrap around the body (x/z angle) and down the body.
@@ -245,6 +251,26 @@ public enum GarmentFitter {
             m.joints.append(src.joints[v]); m.weights.append(src.weights[v])
             m.faceUVs.append(.zero); m.aux.append(V2(0, hemFade))
         }
+        // Drape: relax the shell (cloth spans hollows), keep it outside the body, then add folds.
+        let order = used.sorted()
+        if g.drape > 0 {
+            for _ in 0..<g.drape {
+                var next = m.positions
+                for v in order {
+                    let i = Int(remap[v]!)
+                    var acc = V3.zero, c: Float = 0
+                    for u in info.adjacency[v] { if let j = remap[u] { acc += m.positions[Int(j)]; c += 1 } }
+                    if c > 0 { next[i] = m.positions[i] * 0.4 + acc / c * 0.6 }
+                }
+                m.positions = next
+                for v in order {
+                    let i = Int(remap[v]!)
+                    let d = simd_dot(m.positions[i] - src.positions[v], src.normals[v])
+                    if d < minOff[i] { m.positions[i] += src.normals[v] * (minOff[i] - d) }
+                }
+            }
+        }
+        for v in order { let i = Int(remap[v]!); m.positions[i] += src.normals[v] * foldAmount[i] }
         if g.coverage.feet > 0 { shapeShoe(&m, used: used.sorted(), info: info, adjacency: info.adjacency, remap: remap, g: g) }
         var idx = tris.map { remap[Int($0)]! }
         // Smooth the opening so hems run in clean lines instead of following the triangle staircase.

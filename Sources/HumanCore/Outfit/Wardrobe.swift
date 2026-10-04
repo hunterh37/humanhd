@@ -81,37 +81,37 @@ public enum GarmentFabrics {
 
 /// Built-in garments. Use `.colored(0xRRGGBB)` to recolor and `.with { }` to adjust any parameter.
 public enum Wardrobe {
-    public static let tshirt = Garment(id: "tshirt", name: "T-shirt", layer: 1, coverage: .init().with { $0.torso = true; $0.sleeves = 0.55; $0.torsoBottom = 0.25; $0.neckDepth = 0.035; $0.neckScoop = 0.02 }, material: "garment.jersey")
+    public static let tshirt = Garment(id: "tshirt", name: "T-shirt", layer: 1, coverage: .init().with { $0.torso = true; $0.sleeves = 0.55; $0.torsoBottom = 0.42; $0.neckDepth = 0.035; $0.neckScoop = 0.02 }, material: "garment.jersey")
         .with { $0.offset = 0.004; $0.flare = 0.012; $0.folds = 0.004 }
     public static let longSleeve = tshirt.with { $0.id = "longsleeve"; $0.name = "Long-sleeve tee"; $0.coverage.sleeves = 1.95 }
     public static let tank = tshirt.with { $0.id = "tank"; $0.name = "Tank top"; $0.coverage.sleeves = 0; $0.coverage.neckScoop = 0.05 }
-    public static let shirt = Garment(id: "shirt", name: "Button shirt", layer: 1, coverage: .init().with { $0.torso = true; $0.sleeves = 1.95; $0.torsoBottom = 0.1; $0.neckDepth = 0.012 }, material: "garment.poplin")
+    public static let shirt = Garment(id: "shirt", name: "Button shirt", layer: 1, coverage: .init().with { $0.torso = true; $0.sleeves = 1.95; $0.torsoBottom = 0.5; $0.neckDepth = 0.012 }, material: "garment.poplin")
         .with { $0.offset = 0.006; $0.flare = 0.015; $0.folds = 0.006 }
-    public static let sweater = Garment(id: "sweater", name: "Crew sweater", layer: 2, coverage: .init().with { $0.torso = true; $0.sleeves = 1.92; $0.torsoBottom = 0.2; $0.neckDepth = 0.015 }, material: "garment.wool")
+    public static let sweater = Garment(id: "sweater", name: "Crew sweater", layer: 2, coverage: .init().with { $0.torso = true; $0.sleeves = 1.92; $0.torsoBottom = 0.55; $0.neckDepth = 0.015 }, material: "garment.wool")
         .with { $0.offset = 0.011; $0.flare = 0.008; $0.folds = 0.007; $0.hem = 0.006 }
-    public static let jacket = Garment(id: "jacket", name: "Field jacket", layer: 3, coverage: .init().with { $0.torso = true; $0.sleeves = 1.9; $0.torsoBottom = 0.05; $0.neckDepth = 0.0; $0.neckScoop = 0.06 }, material: "garment.nylon")
-        .with { $0.offset = 0.02; $0.flare = 0.02; $0.folds = 0.01; $0.hem = 0.008 }
+    public static let jacket = Garment(id: "jacket", name: "Field jacket", layer: 3, coverage: .init().with { $0.torso = true; $0.sleeves = 1.9; $0.torsoBottom = 0.45; $0.neckDepth = 0.0; $0.neckScoop = 0.06 }, material: "garment.nylon")
+        .with { $0.offset = 0.02; $0.flare = 0.02; $0.folds = 0.01; $0.hem = 0.008; $0.drape = 16 }
     public static let leatherJacket = jacket.with { $0.id = "leather-jacket"; $0.name = "Leather jacket"; $0.material = "garment.leather"; $0.coverage.torsoBottom = 0.45; $0.offset = 0.016; $0.folds = 0.006 }
     public static let coat = jacket.with { $0.id = "coat"; $0.name = "Overcoat"; $0.material = "garment.flannel"; $0.coverage.legs = 1.1; $0.offset = 0.022; $0.flare = 0.06 }
-    public static let jeans = Garment(id: "jeans", name: "Jeans", layer: 1, coverage: .init().with { $0.pelvis = true; $0.rise = 0.55; $0.legs = 1.97 }, material: "garment.denim")
-        .with { $0.offset = 0.004; $0.flare = 0.012; $0.folds = 0.005; $0.hem = 0.005 }
+    public static let jeans = Garment(id: "jeans", name: "Jeans", layer: 1, coverage: .init().with { $0.pelvis = true; $0.rise = 0.75; $0.legs = 1.97 }, material: "garment.denim")
+        .with { $0.offset = 0.004; $0.flare = 0.012; $0.folds = 0.005; $0.hem = 0.005; $0.drape = 6 }
     public static let chinos = jeans.with { $0.id = "chinos"; $0.name = "Chinos"; $0.material = "garment.twill"; $0.flare = 0.016 }
     public static let shorts = jeans.with { $0.id = "shorts"; $0.name = "Shorts"; $0.material = "garment.twill:5A6B4A"; $0.coverage.legs = 0.62; $0.flare = 0.02 }
     public static let leggings = Garment(id: "leggings", name: "Leggings", layer: 1, coverage: .init().with { $0.pelvis = true; $0.rise = 0.9; $0.legs = 1.95 }, material: "garment.lycra")
-        .with { $0.offset = 0.0015; $0.folds = 0.001; $0.hem = 0.0015 }
+        .with { $0.offset = 0.0015; $0.folds = 0.001; $0.hem = 0.0015; $0.drape = 1 }
     public static let skirt = Garment(id: "skirt", name: "Skirt", layer: 1, coverage: .init().with { $0.pelvis = true; $0.rise = 0.85; $0.skirt = 0.85 }, material: "garment.flannel:2A2A30")
         .with { $0.offset = 0.006; $0.flare = 0.09; $0.folds = 0.01 }
     public static let dress = Garment(id: "dress", name: "Dress", layer: 1, coverage: .init().with { $0.torso = true; $0.sleeves = 0.3; $0.torsoBottom = 0.5; $0.pelvis = true; $0.rise = 1; $0.skirt = 1.05; $0.neckScoop = 0.05; $0.neckDepth = 0.03 }, material: "garment.poplin:7A2A3A")
         .with { $0.offset = 0.005; $0.flare = 0.11; $0.folds = 0.012 }
     public static let briefs = Garment(id: "briefs", name: "Briefs", layer: 0, coverage: .init().with { $0.pelvis = true; $0.rise = 0.3; $0.legs = 0.12 }, material: "garment.jersey:2A2A2E")
-        .with { $0.offset = 0.0015; $0.folds = 0.0005; $0.hem = 0.0015 }
+        .with { $0.offset = 0.0015; $0.folds = 0.0005; $0.hem = 0.0015; $0.drape = 1 }
     public static let sneakers = Garment(id: "sneakers", name: "Sneakers", layer: 4, coverage: .init().with { $0.feet = 1 }, material: "garment.canvas")
-        .with { $0.offset = 0.007; $0.folds = 0.001; $0.hem = 0.004 }
+        .with { $0.offset = 0.007; $0.folds = 0.001; $0.hem = 0.004; $0.drape = 0 }
     public static let boots = sneakers.with { $0.id = "boots"; $0.name = "Leather boots"; $0.material = "garment.leather:3A2418"; $0.coverage.feet = 2; $0.offset = 0.009 }
     public static let socks = Garment(id: "socks", name: "Socks", layer: 0, coverage: .init().with { $0.feet = 1.5 }, material: "garment.jersey:EDEDED")
-        .with { $0.offset = 0.0012; $0.folds = 0.0005; $0.hem = 0.001 }
+        .with { $0.offset = 0.0012; $0.folds = 0.0005; $0.hem = 0.001; $0.drape = 0 }
     public static let gloves = Garment(id: "gloves", name: "Gloves", layer: 3, coverage: .init().with { $0.hands = true }, material: "garment.leather")
-        .with { $0.offset = 0.0015; $0.folds = 0.0008; $0.hem = 0.002 }
+        .with { $0.offset = 0.0015; $0.folds = 0.0008; $0.hem = 0.002; $0.drape = 0 }
 
     public static let all: [Garment] = [tshirt, longSleeve, tank, shirt, sweater, jacket, leatherJacket, coat, jeans, chinos, shorts, leggings, skirt, dress, briefs, sneakers, boots, socks, gloves]
     public static func garment(_ id: String) -> Garment? { all.first { $0.id == id } }

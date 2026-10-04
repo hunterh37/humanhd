@@ -63,6 +63,8 @@ func run() async throws {
         }
     case "posetest":
         try await poseTestCommand(args)
+    case "bench":
+        try await benchCommand(args)
     case "look":
         try await lookCommand(args)
     case "anim":
