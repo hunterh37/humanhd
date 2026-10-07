@@ -213,8 +213,7 @@ public final class SkinPainter: @unchecked Sendable {
             ce.setTexture(ping[2], index: 4); ce.setTexture(last ? view(targets.p, rgba8: true) : outP, index: 5)
             ce.setTexture(ping[3], index: 6); ce.setTexture(pong[3], index: 7)
             let tw = dilate.threadExecutionWidth, th = max(1, dilate.maxTotalThreadsPerThreadgroup / tw)
-            ce.dispatchThreads(MTLSize(width: n, height: n, depth: 1), threadsPerThreadgroup: MTLSize(width: tw, height: th, depth: 1))
-            ce.memoryBarrier(scope: .textures)
+            do { let tg = MTLSize(width: tw, height: th, depth: 1); ce.dispatchThreadgroups(MTLSize(width: ((n) + tg.width - 1) / tg.width, height: ((n) + tg.height - 1) / tg.height, depth: 1), threadsPerThreadgroup: tg) }
             swap(&ping, &pong)
         }
         ce.endEncoding()
@@ -236,7 +235,7 @@ public final class SkinPainter: @unchecked Sendable {
         var s = seed
         ce.setBytes(&s, length: 4, index: 0)
         let tw = micro.threadExecutionWidth, th = max(1, micro.maxTotalThreadsPerThreadgroup / tw)
-        ce.dispatchThreads(MTLSize(width: t.width, height: t.height, depth: 1), threadsPerThreadgroup: MTLSize(width: tw, height: th, depth: 1))
+        do { let tg = MTLSize(width: tw, height: th, depth: 1); ce.dispatchThreadgroups(MTLSize(width: ((t.width) + tg.width - 1) / tg.width, height: ((t.height) + tg.height - 1) / tg.height, depth: 1), threadsPerThreadgroup: tg) }
         ce.endEncoding()
         if t.mipmapLevelCount > 1, let b = cb.makeBlitCommandEncoder() { b.generateMipmaps(for: t); b.endEncoding() }
     }

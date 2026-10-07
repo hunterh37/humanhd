@@ -126,7 +126,7 @@ public final class SkinFields: Sendable {
         for v in 0..<n {
             let w = data.weights[v], jb = data.weightBones[v]
             var palm: Float = 0, crease: Float = 0, nail: Float = 0
-            for k in 0..<4 where w[k] > 0.2 {
+            for k in 0..<4 where w[k] > 0 {
                 let bi = Int(jb[k]), b = sk.bones[bi], name = b.name
                 let isHand = name.hasPrefix("finger") || name.hasPrefix("metacarpal") || name.hasPrefix("wrist")
                 let isFoot = name.hasPrefix("toe") || name.hasPrefix("foot")

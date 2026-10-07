@@ -44,6 +44,8 @@ public final class CharacterAnimator {
     // State.
     public private(set) var time: Float = 0
     public var gait = Gait()
+    /// Random idle arm gestures (hand on hip, clasped, behind back).
+    public var arms: ArmIdleController
     var gaze: GazeController
     var speech = SpeechController()
     var speedSpring = FloatSpring(0)
@@ -62,6 +64,7 @@ public final class CharacterAnimator {
         face = FaceRig(skeleton: skeleton)
         stance = StanceReference(anatomy)
         gaze = GazeController(seed: seed &+ 17)
+        arms = ArmIdleController(seed: seed)
         rng = SeededRNG(seed: seed)
         self.seed = UInt32(truncatingIfNeeded: seed &* 2654435761)
         inertial = Inertializer(count: skeleton.count)
@@ -100,6 +103,8 @@ public final class CharacterAnimator {
         if moving > 0.001 { locomotion(&p, g, weight: moving) }
         // 3. Breathing (additive, everywhere).
         breathe(&p, moving: moving)
+        let clipShare = layers.reduce(Float(0)) { max($0, $1.weight) }
+        arms.update(&p, anatomy: a, dt: dt, weight: (1 - moving) * (1 - clipShare), energy: energy)
         // 4. Clip layers.
         for i in layers.indices.reversed() {
             var l = layers[i]
@@ -140,8 +145,9 @@ public final class CharacterAnimator {
     func relaxedStance(_ p: inout Pose) {
         let a = anatomy
         for side in Side.allCases {
-            a.arm(&p, side, flex: 2, abduct: -40, rotate: -10)
-            a.elbow(&p, side, flex: 12 - restElbow, pronate: -38)
+            // Hands hang slightly forward of the thigh line and clear of the leg surface.
+            a.arm(&p, side, flex: 4, abduct: -27, rotate: -8)
+            a.elbow(&p, side, flex: 18 - restElbow, pronate: -38)
             a.wristBend(&p, side, flex: 6, deviate: 4)
             a.hand(&p, side, curl: 0.28, spread: 0.2, thumb: 0.35)
             a.rotate(&p, a.clavicle[side.rawValue], axis: V3(0, 0, 1), degrees: -3, side: side)

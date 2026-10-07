@@ -44,7 +44,7 @@ public final class StrandPainter: @unchecked Sendable {
         ce.setTexture(t.makeTextureView(pixelFormat: t.pixelFormat, textureType: .type2D, levels: 0..<1, slices: 0..<1) ?? t, index: 0)
         ce.setBytes(&p, length: MemoryLayout<Spec>.stride, index: 0)
         let tw = kernel.threadExecutionWidth, th = max(1, kernel.maxTotalThreadsPerThreadgroup / tw)
-        ce.dispatchThreads(MTLSize(width: t.width, height: t.height, depth: 1), threadsPerThreadgroup: MTLSize(width: tw, height: th, depth: 1))
+        do { let tg = MTLSize(width: tw, height: th, depth: 1); ce.dispatchThreadgroups(MTLSize(width: ((t.width) + tg.width - 1) / tg.width, height: ((t.height) + tg.height - 1) / tg.height, depth: 1), threadsPerThreadgroup: tg) }
         ce.endEncoding()
         if t.mipmapLevelCount > 1, let b = cb.makeBlitCommandEncoder() { b.generateMipmaps(for: t); b.endEncoding() }
     }

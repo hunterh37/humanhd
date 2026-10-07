@@ -136,7 +136,7 @@ public struct HumanModel: Sendable {
     static func creaseDrivers(_ m: SkinnedMesh, skeleton s: Skeleton) -> [(Int, Int, Float, Float)] {
         m.joints.indices.map { i in
             let j = m.joints[i], w = m.weights[i]
-            guard w.y > 0.15 else { return (0, 0, 0, 0) }
+            guard w.y > 0 else { return (0, 0, 0, 0) }
             let a = Int(j.x), b = Int(j.y)
             guard a < s.count, b < s.count else { return (0, 0, 0, 0) }
             let pa = s.bones[a].parent, pb = s.bones[b].parent

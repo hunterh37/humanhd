@@ -16,10 +16,13 @@ public enum EyeMaterial {
         guard let painter = EyePainter.shared, let cb = painter.queue.makeCommandBuffer() else { throw HumanKitError.noMetal }
         let n = 1024
         func ll(_ f: MTLPixelFormat) throws -> LowLevelTexture {
-            try LowLevelTexture(descriptor: .init(textureType: .type2D, pixelFormat: f, width: n, height: n, mipmapLevelCount: 11, textureUsage: [.shaderRead, .shaderWrite]))
+            try LowLevelTexture(descriptor: .init(textureType: .type2D, pixelFormat: f, width: n, height: n, mipmapLevelCount: 11, textureUsage: [.shaderRead, .shaderWrite, .pixelFormatView]))
         }
         let a = try ll(.rgba8Unorm_srgb), nm = try ll(.rg8Unorm), r = try ll(.r8Unorm)
         painter.encode(e, albedo: a.replace(using: cb), normal: nm.replace(using: cb), roughness: r.replace(using: cb), commandBuffer: cb)
+        #if DEBUG
+        cb.addCompletedHandler { b in print("EYE_PAINT_DONE status=\(b.status.rawValue) err=\(String(describing: b.error))") }
+        #endif
         cb.commit()
         var m = PhysicallyBasedMaterial()
         m.baseColor = .init(tint: .white, texture: .init(try TextureResource(from: a)))

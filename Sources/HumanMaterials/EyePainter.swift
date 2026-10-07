@@ -33,11 +33,11 @@ public final class EyePainter: @unchecked Sendable {
         guard let ce = cb.makeComputeCommandEncoder() else { return }
         ce.setComputePipelineState(kernel)
         func v(_ t: MTLTexture) -> MTLTexture { t.makeTextureView(pixelFormat: t.pixelFormat, textureType: .type2D, levels: 0..<1, slices: 0..<1) ?? t }
-        ce.setTexture(v(albedo), index: 0); ce.setTexture(v(normal), index: 1); ce.setTexture(v(roughness), index: 2)
+        ce.setTexture(albedo.pixelFormat == .rgba8Unorm_srgb ? (albedo.makeTextureView(pixelFormat: .rgba8Unorm, textureType: .type2D, levels: 0..<1, slices: 0..<1) ?? v(albedo)) : v(albedo), index: 0); ce.setTexture(v(normal), index: 1); ce.setTexture(v(roughness), index: 2)
         ce.setBytes(&p, length: MemoryLayout<Params>.stride, index: 0)
         let n = albedo.width
         let tw = kernel.threadExecutionWidth, th = max(1, kernel.maxTotalThreadsPerThreadgroup / tw)
-        ce.dispatchThreads(MTLSize(width: n, height: n, depth: 1), threadsPerThreadgroup: MTLSize(width: tw, height: th, depth: 1))
+        do { let tg = MTLSize(width: tw, height: th, depth: 1); ce.dispatchThreadgroups(MTLSize(width: ((n) + tg.width - 1) / tg.width, height: ((n) + tg.height - 1) / tg.height, depth: 1), threadsPerThreadgroup: tg) }
         ce.endEncoding()
         if let b = cb.makeBlitCommandEncoder() {
             for t in [albedo, normal, roughness] where t.mipmapLevelCount > 1 { b.generateMipmaps(for: t) }
@@ -114,7 +114,7 @@ public final class EyePainter: @unchecked Sendable {
             h = vessels * 0.3;
             rg = 0.1;
         }
-        albedo.write(float4(saturate(col), 1.0), gid);
+        albedo.write(float4(lin2srgb(saturate(col)), 1.0), gid);
         float hx = 0.0;
         normal.write(float4(0.5 + hx, 0.5, 0.0, 1.0), gid);
         rough.write(float4(rg), gid);

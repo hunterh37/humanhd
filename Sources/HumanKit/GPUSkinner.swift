@@ -40,13 +40,15 @@ public final class GPUSkinner {
         enc.setComputePipelineState(skin)
         enc.setBuffer(g.rest, offset: 0, index: 0)
         enc.setBuffer(g.influences, offset: 0, index: 1)
-        enc.setBytes(bones.baseAddress!, length: bones.count * 16, index: 2)
+        let len = bones.count * 16
+        if len <= 4096 { enc.setBytes(bones.baseAddress!, length: len, index: 2) }
+        else if let b = device.makeBuffer(bytes: bones.baseAddress!, length: len, options: .storageModeShared) { enc.setBuffer(b, offset: 0, index: 2) }
         enc.setBuffer(output, offset: 0, index: 3)
         var n = UInt32(g.vertexCount)
         enc.setBytes(&n, length: 4, index: 4)
         enc.setBuffer(g.creases, offset: 0, index: 5)
         let w = skin.threadExecutionWidth
-        enc.dispatchThreads(MTLSize(width: g.vertexCount, height: 1, depth: 1), threadsPerThreadgroup: MTLSize(width: min(w * 4, skin.maxTotalThreadsPerThreadgroup), height: 1, depth: 1))
+        do { let tpg = min(w * 4, skin.maxTotalThreadsPerThreadgroup); enc.dispatchThreadgroups(MTLSize(width: (g.vertexCount + tpg - 1) / tpg, height: 1, depth: 1), threadsPerThreadgroup: MTLSize(width: tpg, height: 1, depth: 1)) }
     }
 
     static let source = #"""

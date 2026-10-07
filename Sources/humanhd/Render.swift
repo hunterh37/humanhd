@@ -122,6 +122,7 @@ func animCommand(_ args: [String]) async throws {
     case "talk": anim.core.talkLevel = 0.7; anim.core.expression = .smile; anim.core.expressionWeight = 0.4
     default: break
     }
+    if let g = args.first(where: { $0.hasPrefix("gesture=") })?.dropFirst(8), let n = Int(g) { anim.core.arms.forced = ArmIdleController.Gesture(rawValue: n) }
     let frames = Int(args.first(where: { $0.hasPrefix("frames=") })?.dropFirst(7) ?? "8") ?? 8
     let step = Float(args.first(where: { $0.hasPrefix("dt=") })?.dropFirst(3) ?? "0.1") ?? 0.1
     let warm = Float(args.first(where: { $0.hasPrefix("warm=") })?.dropFirst(5) ?? "1.5") ?? 1.5
@@ -169,6 +170,11 @@ func poseTestCommand(_ args: [String]) async throws {
         ("rot+30", { for sd in Side.allCases { a.arm(&$0, sd, abduct: -40, rotate: 30); a.elbow(&$0, sd, flex: -28); a.hand(&$0, sd, curl: 0.3) } }),
         ("anim", { p in let an = CharacterAnimator(skeleton: body.skeleton); an.update(&p, dt: 0.016) }),
     ]
+    let wristTests: [(String, (inout Pose) -> Void)] = [
+        ("wflex+60", { for sd in Side.allCases { a.arm(&$0, sd, abduct: -40); a.elbow(&$0, sd, flex: -28, pronate: 60); a.wristBend(&$0, sd, flex: 60, deviate: 20) } }),
+        ("wflex-60", { for sd in Side.allCases { a.arm(&$0, sd, abduct: -40); a.elbow(&$0, sd, flex: -28, pronate: -60); a.wristBend(&$0, sd, flex: -60, deviate: -20) } }),
+    ]
+    if args.contains("wrist") { try await wristCloseups(body, a, wristTests); return }
     let env = try RealEnvironment(SunSky.afternoon, skybox: true)
     var tiles: [CGImage] = []
     for az: Float in [0, 90] {
@@ -190,6 +196,35 @@ func poseTestCommand(_ args: [String]) async throws {
     print("out/posetest.png", tests.map(\.0))
 }
 
+/// `posetest wrist`: close-ups of the left wrist under strong flexion / pronation.
+@MainActor
+func wristCloseups(_ body: HumanBody, _ a: Anatomy, _ tests: [(String, (inout Pose) -> Void)]) async throws {
+    let env = try RealEnvironment(SunSky.afternoon, skybox: true)
+    var tiles: [CGImage] = []
+    let w = 360, h = 360
+    for az: Float in [90, 270] {
+        for (_, f) in tests {
+            Human.setup()
+            var spec = HumanSpec(); spec.shape = .averageFemale; spec.appearance.detail = SkinDetail.matching(spec.shape); spec.outfit = .none
+            let ch = try await Human.make(spec, animate: false, seed: 2, lods: false)
+            var p = Pose(boneCount: ch.body.skeleton.count); f(&p); ch.pose = p
+            HumanSkinning.run([ch], dt: 0, wait: true)
+            let wp = p.world(ch.body.skeleton)[a.wrist[0]].translation
+            let preview = try RealPreview(environment: env)
+            let root = Entity(); root.addChild(ch.entity); env.illuminate(root); preview.add(root)
+            let r = az * .pi / 180
+            preview.look(from: wp + V3(sin(r), 0.05, cos(r)) * 0.16, at: wp, fov: 40)
+            if let img = try await preview.render(width: w, height: h, frames: 2) { tiles.append(img) }
+        }
+    }
+    let cols = tests.count, rows = 2
+    let ctx = CGContext(data: nil, width: w * cols, height: h * rows, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    for (i, img) in tiles.enumerated() { ctx.draw(img, in: CGRect(x: (i % cols) * w, y: (rows - 1 - i / cols) * h, width: w, height: h)) }
+    let out = args0(CommandLine.arguments.first(where: { $0.hasSuffix(".png") }))
+    writePNG(ctx.makeImage()!, out)
+    print(out)
+}
+func args0(_ s: String?) -> String { s ?? "out/wrist.png" }
 
 /// `look [preset outfit] [hair] [seed=n] [face] [az=deg]`: a full character through `Human.make`.
 @MainActor

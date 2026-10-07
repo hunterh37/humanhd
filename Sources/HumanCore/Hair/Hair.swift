@@ -151,13 +151,16 @@ public enum HairBuilder {
             flow -= r.n * simd_dot(flow, r.n)
             let front = r.p.z > hc.z - hr.z * 0.15 && r.p.y > hc.y - hr.y * 0.1
             if front {
-                let s: Float = r.p.x >= partX ? 1 : -1
-                flow = style.fringe > 0 && abs(r.p.x - partX) < 0.035
-                    ? simd_normalize(V3(s * 0.4, -0.4, 0.6 * style.fringe))
+                // Soft part: sideways sweep ramps in over 2.5 cm so cards at the line lie back over it
+                // instead of splitting and baring the scalp.
+                let s = max(-1, min(1, (r.p.x - partX) / 0.025))
+                let fringeW: Float = 0.035 + 0.05 * style.fringe
+                flow = style.fringe > 0 && abs(r.p.x - partX) < fringeW && r.p.z > hc.z + hr.z * 0.2
+                    ? simd_normalize(V3(s * 0.5, -0.45, 0.55 * style.fringe))
                     : simd_normalize(V3(s, -0.2, -0.45 - 0.5 * max(0, (r.p.z - hc.z) / hr.z)))
             }
             var fl = flow + V3(0, -0.04, 0)
-            if simd_length(fl) < 0.02 { fl = V3(r.p.x - partX, 0, -0.03) }
+            if simd_length(fl) < 0.05 { fl = V3((r.p.x - partX) * 0.3, -0.02, -0.06) }
             var dir = simd_normalize(r.n * 0.08 + simd_normalize(fl))
             let jitter = 0.85 + 0.3 * rng.float()
             var len = style.length * jitter
