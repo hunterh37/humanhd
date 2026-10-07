@@ -170,6 +170,7 @@ public struct DualQuat: Sendable {
             d = simd_quatf(vector: d.vector + dq.dual.vector * s)
         }
         let n = simd_length(r.vector)
+        guard n > 0 else { return q[0] }
         return DualQuat(real: simd_quatf(vector: r.vector / n), dual: simd_quatf(vector: d.vector / n))
     }
 

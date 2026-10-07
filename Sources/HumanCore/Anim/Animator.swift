@@ -236,7 +236,7 @@ public final class CharacterAnimator {
             TwoBoneIK.setWorldRotation(&p, s, a.foot[i], level, parentWorld: parent)
             a.ankle(&p, side, dorsiflex: g.footPitch[i] * moving)
             a.toes(&p, side, extend: g.toe[i] * moving)
-            w = p.world(s)
+            if side != Side.allCases.last { w = p.world(s) }
         }
     }
 }
