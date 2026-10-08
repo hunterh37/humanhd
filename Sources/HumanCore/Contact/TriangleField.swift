@@ -35,6 +35,8 @@ public final class TriangleField: ContactWorld, @unchecked Sendable {
             t += 3
             guard i0 < world.count, i1 < world.count, i2 < world.count else { continue }
             let a = world[i0], b = world[i1], c = world[i2]
+            // Int32(floor(.nan / .infinity)) traps in key().
+            guard Self.finite(a), Self.finite(b), Self.finite(c) else { continue }
             guard simd_length_squared(simd_cross(b - a, c - a)) > 1e-12 else { continue }
             let ti = Int32(tris.count)
             tris.append((a, b, c))
@@ -56,6 +58,7 @@ public final class TriangleField: ContactWorld, @unchecked Sendable {
     // MARK: queries
 
     public func ground(x: Float, z: Float, fromY: Float) -> (y: Float, normal: V3)? {
+        guard x.isFinite, z.isFinite, fromY.isFinite else { return nil }
         var best: (y: Float, normal: V3)?
         let reach: Float = 3
         for p in snapshot() where x >= p.lo.x && x <= p.hi.x && z >= p.lo.z && z <= p.hi.z && p.lo.y <= fromY {
@@ -78,6 +81,7 @@ public final class TriangleField: ContactWorld, @unchecked Sendable {
     }
 
     public func nearest(_ q: V3, radius: Float) -> (point: V3, normal: V3)? {
+        guard Self.finite(q), radius.isFinite, radius >= 0 else { return nil }
         var bestD = radius * radius
         var best: (point: V3, normal: V3)?
         for p in snapshot() {
@@ -100,6 +104,8 @@ public final class TriangleField: ContactWorld, @unchecked Sendable {
         }
         return best
     }
+
+    static func finite(_ p: V3) -> Bool { p.x.isFinite && p.y.isFinite && p.z.isFinite }
 
     /// Height of the triangle's plane at (x, z) when (x, z) lies inside its XZ projection.
     static func heightAt(_ x: Float, _ z: Float, _ a: V3, _ b: V3, _ c: V3) -> Float? {

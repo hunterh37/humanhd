@@ -15,3 +15,15 @@ Architecture notes
 - Profile with RealityKit Trace: target 90 fps, < 11 ms frame, zero steady-state allocations in HumanSystem.
 
 Build: clean before/after. Warnings: 1 pre-existing (Motion.swift:27 Sendable). Tests: swift test, 14 XCTest pass.
+
+## Pass 2 (after 8f1cb69 body-contact-ik)
+
+Applied
+- Sources/HumanCore/Contact/TriangleField.swift set(): skip triangles with non-finite vertices (bug: Int32(floor(nan)) trap in key()).
+- TriangleField.ground / nearest: return nil on non-finite query or negative radius (same trap).
+
+Skipped RISKY
+- TriangleField.set: very large triangles span many grid cells (memory); cell cap would change hits.
+- HumanContactDriver.update: allocates CompositeWorld + contacts array per frame; small, left as is.
+
+Build clean, warnings 4 -> 4. swift test: 20 tests, 0 failures.
