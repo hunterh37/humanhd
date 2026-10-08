@@ -38,6 +38,8 @@ public final class HumanCharacter {
     var frameCounter = 0
     var pendingDT: Float = 0
     var pendingDTUsed: Float = 0
+    /// Reusable bone buffers (> 4 KB of dual quaternions); one is reused once its command buffer completed.
+    var boneBuffers: [(buffer: MTLBuffer, cb: MTLCommandBuffer)] = []
 
     /// Mesh levels of detail: level 0 is the hero mesh; coarser levels are added with `addLevel`.
     public struct Level {
@@ -133,7 +135,18 @@ public final class HumanCharacter {
 
     func encode(_ enc: MTLComputeCommandEncoder, _ cb: MTLCommandBuffer, skinner: GPUSkinner) {
         let out = gpu.mesh.replace(bufferIndex: 0, using: cb)
-        dq.withUnsafeBufferPointer { skinner.encode(gpu, bones: $0, into: enc, output: out) }
+        let len = dq.count * 16
+        var bb: MTLBuffer?
+        if len > 4096 {
+            if let i = boneBuffers.firstIndex(where: { $0.buffer.length >= len && $0.cb.status.rawValue >= MTLCommandBufferStatus.completed.rawValue }) {
+                bb = boneBuffers[i].buffer
+                boneBuffers[i].cb = cb
+            } else if let b = skinner.device.makeBuffer(length: len, options: .storageModeShared) {
+                bb = b
+                boneBuffers.append((b, cb))
+            }
+        }
+        dq.withUnsafeBufferPointer { skinner.encode(gpu, bones: $0, into: enc, output: out, boneBuffer: bb) }
     }
 
     /// Model-space bone transforms of the current pose (attachments, IK targets, look-at).

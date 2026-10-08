@@ -24,6 +24,8 @@ public struct Anatomy: Sendable {
     public let eye: [Int]
     /// fingers[side][finger 0 thumb ... 4 pinky] = [segment bones]
     public let fingers: [[[Int]]]
+    /// toeBones[side] = existing "toe1-1" ... "toe5-1" bones, resolved once.
+    let toeBones: [[Int]]
 
     /// Elbow flexion of the rest (A) pose in degrees: hm08 rests with the elbows bent forward ~40.
     public var restElbow: Float {
@@ -46,6 +48,7 @@ public struct Anatomy: Sendable {
         fingers = Side.allCases.map { side in
             (1...5).map { f in (1...3).map { seg in b("finger\(f)-\(seg)\(side.suffix)") } }
         }
+        toeBones = Side.allCases.map { side in (1...5).compactMap { f in s["toe\(f)-1\(side.suffix)"] } }
     }
 
     @inlinable public static func mirror(_ a: V3, _ side: Side) -> V3 { side == .left ? a : V3(a.x, -a.y, -a.z) }
@@ -172,9 +175,7 @@ public struct Anatomy: Sendable {
 
     /// Toe extension (+ toes bent up, as at toe-off).
     public func toes(_ pose: inout Pose, _ side: Side, extend: Float) {
-        for f in 1...5 {
-            if let b = skeleton["toe\(f)-1\(side.suffix)"] { rotate(&pose, b, axis: V3(-1, 0, 0), degrees: extend, side: side) }
-        }
+        for b in toeBones[side.rawValue] { rotate(&pose, b, axis: V3(-1, 0, 0), degrees: extend, side: side) }
     }
 }
 
