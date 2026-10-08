@@ -36,12 +36,16 @@ public final class GPUSkinner {
     }
 
     /// Encodes skinning of one mesh into `cb` (call between `begin()` and `commit()`).
-    func encode(_ g: SkinnedGPUMesh, bones: UnsafeBufferPointer<SIMD4<Float>>, into enc: MTLComputeCommandEncoder, output: MTLBuffer) {
+    func encode(_ g: SkinnedGPUMesh, bones: UnsafeBufferPointer<SIMD4<Float>>, into enc: MTLComputeCommandEncoder, output: MTLBuffer, boneBuffer: MTLBuffer? = nil) {
         enc.setComputePipelineState(skin)
         enc.setBuffer(g.rest, offset: 0, index: 0)
         enc.setBuffer(g.influences, offset: 0, index: 1)
         let len = bones.count * 16
         if len <= 4096 { enc.setBytes(bones.baseAddress!, length: len, index: 2) }
+        else if let b = boneBuffer, b.length >= len {
+            b.contents().copyMemory(from: bones.baseAddress!, byteCount: len)
+            enc.setBuffer(b, offset: 0, index: 2)
+        }
         else if let b = device.makeBuffer(bytes: bones.baseAddress!, length: len, options: .storageModeShared) { enc.setBuffer(b, offset: 0, index: 2) }
         enc.setBuffer(output, offset: 0, index: 3)
         var n = UInt32(g.vertexCount)

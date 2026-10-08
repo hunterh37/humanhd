@@ -281,12 +281,15 @@ public enum GarmentFitter {
             }
         }
         for v in order { let i = Int(remap[v]!); m.positions[i] += src.normals[v] * foldAmount[i] }
-        if g.coverage.feet > 0 { shapeShoe(&m, used: used.sorted(), info: info, adjacency: info.adjacency, remap: remap, g: g) }
+        // Only outer footwear gets a shoe last; socks follow the foot.
+        if g.coverage.feet > 0 && g.layer >= 3 { shapeShoe(&m, used: used.sorted(), info: info, adjacency: info.adjacency, remap: remap, g: g) }
+        else if g.coverage.feet > 0 { shapeSock(&m, used: used.sorted(), info: info, remap: remap) }
         var idx = tris.map { remap[Int($0)]! }
         // Smooth the opening so hems run in clean lines instead of following the triangle staircase.
         do {
             let rimSet = Set(used.filter { ring[$0] == 0 })
-            for _ in 0..<6 {
+            // Sock cuffs cross the dense foot/calf mesh at a slant; they need more passes to run straight.
+            for _ in 0..<(g.coverage.feet > 0 ? 18 : 6) {
                 var next = m.positions
                 for v in rimSet {
                     let nb = info.adjacency[v].filter { rimSet.contains($0) }
@@ -340,6 +343,41 @@ public enum GarmentFitter {
     /// Shoes: every shell vertex below the ankle is re-projected onto a shoe last (rounded toe box,
     /// waisted midfoot, heel counter) built around the foot axis, so toes disappear into one smooth
     /// upper; the bottom becomes a flat sole with toe spring.
+    /// Socks: knit bridges the toes, so the front of the foot reads as one rounded toe box.
+    static func shapeSock(_ m: inout SkinnedMesh, used: [Int], info: SkinInfo, remap: [Int: UInt32]) {
+        let ankleY = info.lm.ankleY
+        for side in [Float(1), -1] {
+            let src = used.filter { info.canon[$0].x * side > 0 && info.canon[$0].y < ankleY + 0.02 }
+            let ids = src.compactMap { remap[$0].map { Int($0) } }
+            guard ids.count > 10 else { continue }
+            var lo = Float.greatestFiniteMagnitude, hi = -lo
+            for i in ids { lo = min(lo, m.positions[i].z); hi = max(hi, m.positions[i].z) }
+            let len = max(1e-3, hi - lo)
+            // Weight ramps in from mid-foot to the toes.
+            var w = [Int: Float]()
+            for i in ids { w[i] = smoothstep(0.5, 0.68, (m.positions[i].z - lo) / len) }
+            // Toe box: a half superellipsoid capping the forefoot. Its base is the foot's cross-section
+            // at 70% length; every front vertex moves radially onto it, so the knit spans the toes.
+            let front = ids.filter { w[$0]! > 0 }
+            let z0 = lo + len * 0.68
+            var bmin = V3(repeating: .greatestFiniteMagnitude), bmax = -bmin
+            for i in ids where abs(m.positions[i].z - z0) < len * 0.04 { bmin = simd_min(bmin, m.positions[i]); bmax = simd_max(bmax, m.positions[i]) }
+            guard bmin.x < bmax.x else { continue }
+            let c = (bmin + bmax) * 0.5, h = (bmax - bmin) * 0.5
+            let az = hi - z0 + 0.002
+            let n: Float = 2.4
+            for i in front {
+                let p = m.positions[i]
+                let d = V3((p.x - c.x) / h.x, (p.y - c.y) / h.y, max(0, p.z - z0) / az)
+                let r = pow(pow(abs(d.x), n) + pow(abs(d.y), n) + pow(abs(d.z), n), 1 / n)
+                guard r > 1e-4 else { continue }
+                let q = d / r
+                let target = V3(c.x + q.x * h.x, c.y + q.y * h.y, p.z > z0 ? z0 + q.z * az : p.z)
+                m.positions[i] = p + (target - p) * w[i]!
+            }
+        }
+    }
+
     static func shapeShoe(_ m: inout SkinnedMesh, used: [Int], info: SkinInfo, adjacency: [[Int]], remap: [Int: UInt32], g: Garment) {
         let ankleY = info.lm.ankleY
         for side in [Float(1), -1] {
