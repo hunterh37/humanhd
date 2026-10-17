@@ -26,6 +26,8 @@ public final class CharacterAnimator {
     public var viseme: Viseme? { get { speech.viseme } set { speech.viseme = newValue } }
     /// 0 calm ... 1 restless (idle sway, weight shifts).
     public var energy: Float = 0.4
+    /// Athletic ready stance 0 ... 1: knees bent, trunk forward, elbows bent, feet wider than the hips.
+    public var ready: Float = 0
     /// Breaths per minute.
     public var breathRate: Float = 14
     /// Clip layers played on top of the procedural base.
@@ -96,6 +98,7 @@ public final class CharacterAnimator {
         let v = max(0, speedSpring.value)
         // 1. Relaxed stance (from the hm08 A-pose).
         relaxedStance(&p)
+        if ready > 0.001 { readyStance(&p, ready * (1 - min(1, v / 1.2))) }
         // 2. Locomotion or idle weight shifts.
         let g = gait.update(speed: v, dt: dt, rest: stance)
         let moving = g.weight
@@ -151,6 +154,22 @@ public final class CharacterAnimator {
             a.wristBend(&p, side, flex: 6, deviate: 4)
             a.hand(&p, side, curl: 0.28, spread: 0.2, thumb: 0.35)
             a.rotate(&p, a.clavicle[side.rawValue], axis: V3(0, 0, 1), degrees: -3, side: side)
+        }
+    }
+
+    /// Athletic stance layered over the relaxed one; the feet stay planted, so the knees bend through the IK.
+    func readyStance(_ p: inout Pose, _ r: Float) {
+        guard r > 0.001 else { return }
+        let a = anatomy
+        p.rootOffset += V3(0, -0.05, 0.0) * r
+        a.bendTrunk(&p, a.root, flex: 3 * r)
+        a.bendTrunk(&p, a.spine04, flex: 3 * r)
+        a.bendTrunk(&p, a.spine02, flex: 2 * r)
+        a.bendTrunk(&p, a.neck01, flex: -6 * r)
+        for side in Side.allCases {
+            a.arm(&p, side, flex: 16 * r, abduct: -9 * r)
+            a.elbow(&p, side, flex: 32 * r)
+            a.hand(&p, side, curl: 0.1 * r, spread: -0.16 * r)
         }
     }
 
@@ -220,6 +239,7 @@ public final class CharacterAnimator {
         for side in Side.allCases {
             let i = side.rawValue
             var target = stance.ankle[i]
+            target.x += side.sign * 0.012 * ready * (1 - moving)
             target = target + (g.ankle[i] - target) * moving
             let knee = w[a.lowerleg[i]].translation
             let pole = knee + V3(0, 0, 0.5) + V3(side.sign * 0.05, 0, 0)

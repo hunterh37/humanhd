@@ -19,9 +19,31 @@ public struct SkinDetail: Codable, Sendable, Hashable {
     public var pores: Float = 1
     public var sunExposure: Float = 0.5
     public var blotch: Float = 0.6
+    /// Body hair coverage 0 ... 1 (pubic, armpits, forearms, shins, abdominal trail; sex-scaled).
+    public var bodyHair: Float = 0
     public var seed: UInt32 = 1
     public init() {}
     public func with(_ edit: (inout SkinDetail) -> Void) -> SkinDetail { var c = self; edit(&c); return c }
+
+    /// Tolerant decoding: fields added after a payload was written fall back to defaults.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self = SkinDetail()
+        if let v = try c.decodeIfPresent(Float.self, forKey: .age) { age = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .sex) { sex = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .freckles) { freckles = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .moles) { moles = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .stubble) { stubble = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .stubbleDensity) { stubbleDensity = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .brows) { brows = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .browThickness) { browThickness = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .wrinkles) { wrinkles = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .pores) { pores = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .sunExposure) { sunExposure = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .blotch) { blotch = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .bodyHair) { bodyHair = v }
+        if let v = try c.decodeIfPresent(UInt32.self, forKey: .seed) { seed = v }
+    }
 
     /// Detail matched to a body shape (age, sex) with defaults for the rest.
     public static func matching(_ shape: BodyShape, seed: UInt32 = 1) -> SkinDetail {

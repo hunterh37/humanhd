@@ -55,6 +55,7 @@ func run() async throws {
         if args.contains("old") { d.age = 70 }
         if args.contains("stubble") { d.stubble = 1.5 }
         if args.contains("freckles") { d.freckles = 0.8 }
+        if args.contains("bodyhair") { d.bodyHair = 0.85 }
         for (atlas, name) in [(SkinAtlas.body, "body"), (.face, "face")] {
             let t0 = Date()
             let m = try painter.paintSync(d, atlas: atlas, size: size)
@@ -71,6 +72,10 @@ func run() async throws {
         try await animCommand(args)
     case "render":
         try await renderCommand(args)
+    case "hoops":
+        try await hoopsCommand(args)
+    case "gate":
+        hoopsGate(args)
     default:
         print("humanhd probe | render")
     }

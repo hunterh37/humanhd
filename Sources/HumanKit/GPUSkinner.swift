@@ -36,7 +36,7 @@ public final class GPUSkinner {
     }
 
     /// Encodes skinning of one mesh into `cb` (call between `begin()` and `commit()`).
-    func encode(_ g: SkinnedGPUMesh, bones: UnsafeBufferPointer<SIMD4<Float>>, into enc: MTLComputeCommandEncoder, output: MTLBuffer, boneBuffer: MTLBuffer? = nil) {
+    func encode(_ g: SkinnedGPUMesh, bones: UnsafeBufferPointer<SIMD4<Float>>, into enc: MTLComputeCommandEncoder, output: MTLBuffer, boneBuffer: MTLBuffer? = nil, hide: MTLBuffer? = nil) {
         enc.setComputePipelineState(skin)
         enc.setBuffer(g.rest, offset: 0, index: 0)
         enc.setBuffer(g.influences, offset: 0, index: 1)
@@ -51,6 +51,9 @@ public final class GPUSkinner {
         var n = UInt32(g.vertexCount)
         enc.setBytes(&n, length: 4, index: 4)
         enc.setBuffer(g.creases, offset: 0, index: 5)
+        var useHide: UInt32 = hide == nil ? 0 : 1
+        enc.setBuffer(hide ?? g.creases, offset: 0, index: 6)
+        enc.setBytes(&useHide, length: 4, index: 7)
         let w = skin.threadExecutionWidth
         do { let tpg = min(w * 4, skin.maxTotalThreadsPerThreadgroup); enc.dispatchThreadgroups(MTLSize(width: (g.vertexCount + tpg - 1) / tpg, height: 1, depth: 1), threadsPerThreadgroup: MTLSize(width: tpg, height: 1, depth: 1)) }
     }
@@ -76,10 +79,29 @@ public final class GPUSkinner {
                         device OutVertex *out [[buffer(3)]],
                         constant uint &count [[buffer(4)]],
                         device const Crease *crease [[buffer(5)]],
+                        device const float4 *hide [[buffer(6)]],      // per bone: severed chain root rest head (xyz), root bone + 1 (w); w = 0 when attached
+                        constant uint &useHide [[buffer(7)]],
                         uint id [[thread_position_in_grid]]) {
         if (id >= count) return;
         RestVertex r = rest[id];
         Influence f = inf[id];
+        if (useHide != 0) {
+            // A vertex whose strongest bone was cut off collapses onto the cut joint: the limb ends there.
+            int dom = f.j.x; float wd = f.w.x;
+            for (int k = 1; k < 4; k++) { if (f.w[k] > wd) { wd = f.w[k]; dom = f.j[k]; } }
+            float4 h = hide[dom];
+            if (h.w > 0.5) {
+                int rb = int(h.w) - 1;
+                float4 rr = dq[rb * 2], rd = dq[rb * 2 + 1];
+                float3 trr = 2.0 * (rr.w * rd.xyz - rd.w * rr.xyz + cross(rr.xyz, rd.xyz));
+                OutVertex o;
+                o.p = qrot(rr, h.xyz) + trr;
+                o.n = normalize(qrot(rr, r.n.xyz)); o.t = normalize(qrot(rr, r.t.xyz)); o.b = cross(o.n, o.t) * r.t.w;
+                o.dyn = float2(0.0);
+                out[id] = o;
+                return;
+            }
+        }
         float4 r0 = dq[f.j.x * 2], d0 = dq[f.j.x * 2 + 1];
         float4 br = r0 * f.w.x, bd = d0 * f.w.x;
         for (int k = 1; k < 4; k++) {

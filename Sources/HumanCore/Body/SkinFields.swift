@@ -99,7 +99,6 @@ public final class SkinFields: Sendable {
             f[Field.chin.rawValue][v] = chin[v]
             f[Field.laughLines.rawValue][v] = laugh[v]
             f[Field.navel.rawValue][v] = navel[v]
-            f[Field.areola.rawValue][v] = nipple[v]
             f[Field.neck.rawValue][v] = neck[v]
             // Beard: lower face and upper neck, front half, below the cheekbones; not on the lips.
             let hc = lm["head"] ?? .zero
@@ -121,6 +120,23 @@ public final class SkinFields: Sendable {
             let hairY = eyeL.y + hy
             let inHead = q.y > mouthC.y - 0.06 && simd_distance(V2(q.x, q.z), V2(0, zc)) < 0.13
             f[Field.scalp.rawValue][v] = inHead ? sm(q.y, hairY, hairY + 0.012) : 0
+        }
+        // Areola: the morph footprint is ring-shaped (the areola edge moves most), so rebuild it as
+        // a filled disc around each nipple peak: 0.62 plateau fading at ~4 cm, 1.0 core (the papilla).
+        for side in [Float(1), -1] {
+            var peak = -1
+            var best: Float = 0
+            for v in 0..<n where nipple[v] > best && p[v].x * side > 0.02 && p[v].y > 1.1 && p[v].y < 1.4 && p[v].z > 0.05 {
+                best = nipple[v]; peak = v
+            }
+            guard peak >= 0 else { continue }
+            let c0 = p[peak]
+            for v in 0..<n {
+                let d = simd_distance(p[v], c0)
+                let disc = 0.62 * (1 - sm(d, 0.020, 0.045))
+                let core = 1 - sm(d, 0.005, 0.013)
+                f[Field.areola.rawValue][v] = max(f[Field.areola.rawValue][v], max(disc, core))
+            }
         }
         // Hands and feet: palms/soles from the bone frames (skin facing the palm side).
         for v in 0..<n {

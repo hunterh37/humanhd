@@ -68,7 +68,7 @@ public enum HairBuilder {
             var shell = SkinnedMesh()
             for t in stride(from: 0, to: skin.indices.count, by: 3) {
                 let tri = [skin.indices[t], skin.indices[t + 1], skin.indices[t + 2]]
-                guard tri.allSatisfy({ Int($0) < n }), tri.contains(where: { scalp[Int($0)] > 0.12 }) else { continue }
+                guard tri.allSatisfy({ Int($0) < n }), tri.allSatisfy({ scalp[Int($0)] > 0.3 }) else { continue }
                 for v in tri {
                     if remap[v] == nil {
                         remap[v] = UInt32(shell.positions.count)
@@ -77,7 +77,7 @@ public enum HairBuilder {
                         shell.normals.append(src.normals[i]); shell.tangents.append(src.tangents[i])
                         // u: around the head, v: hairline fade (from the scalp field).
                         let c = src.positions[i]
-                        shell.uvs.append(V2(atan2(c.x, c.z) * 0.5 + c.y * 0.37, smoothstep(0.22, 0.8, scalp[i])))
+                        shell.uvs.append(V2(atan2(c.x, c.z) / (2 * .pi) + c.y * 0.37, 1 - smoothstep(0.13, 0.4, scalp[i])))
                         shell.joints.append(src.joints[i]); shell.weights.append(src.weights[i])
                         shell.faceUVs.append(.zero); shell.aux.append(.zero)
                     }
@@ -109,7 +109,7 @@ public enum HairBuilder {
             var area: Float = 0
             for t in stride(from: 0, to: skin.indices.count, by: 3) {
                 let a = Int(skin.indices[t]), b = Int(skin.indices[t + 1]), c = Int(skin.indices[t + 2])
-                guard a < n && b < n && c < n, min(scalp[a], scalp[b], scalp[c]) > 0.5 else { continue }
+                guard a < n && b < n && c < n, min(scalp[a], scalp[b], scalp[c]) > 0.28 else { continue }
                 let ar = simd_length(simd_cross(src.positions[b] - src.positions[a], src.positions[c] - src.positions[a])) * 0.5
                 area += ar; tris.append((a, b, c, area))
             }
@@ -144,11 +144,22 @@ public enum HairBuilder {
         var cidx: [UInt32] = []
         let segs = style.length > 0.15 ? 12 : 6
         let neck = sk["neck02"] ?? head, chest = sk["spine01"] ?? head
+        var paths: [[V3]] = []
+        var layers: [Float] = []
         for (ri, r) in roots.enumerated() {
+            let layer = rng.float()
+            layers.append(layer)
             var pts: [V3] = [r.p + r.n * 0.001]
             // Flow: away from the crown along the surface, then the part line pushes sideways.
             var flow = r.p - crown
             flow -= r.n * simd_dot(flow, r.n)
+            // Comb toward gravity: away from the crown only near the whorl, then straight down the head.
+            if style.kind != .ponytail && style.kind != .bun && simd_length(flow) > 1e-4 {
+                var down = V3(0, -1, 0) - r.n * simd_dot(V3(0, -1, 0), r.n)
+                if simd_length(down) < 0.2 { down = simd_normalize(flow) } else { down = simd_normalize(down) }
+                let g = smoothstep(0.02, 0.07, simd_distance(r.p, crown)) * (style.length > 0.1 ? 0.75 : 0.4)
+                flow = simd_normalize(flow) * (1 - g) + down * g
+            }
             let front = r.p.z > hc.z - hr.z * 0.15 && r.p.y > hc.y - hr.y * 0.1
             if front {
                 // Soft part: sideways sweep ramps in over 2.5 cm so cards at the line lie back over it
@@ -161,7 +172,7 @@ public enum HairBuilder {
             }
             var fl = flow + V3(0, -0.04, 0)
             if simd_length(fl) < 0.05 { fl = V3((r.p.x - partX) * 0.3, -0.02, -0.06) }
-            var dir = simd_normalize(r.n * 0.08 + simd_normalize(fl))
+            var dir = simd_normalize(r.n * 0.04 + simd_normalize(fl))
             let jitter = 0.85 + 0.3 * rng.float()
             var len = style.length * jitter
             if style.kind == .bob || style.kind == .long {
@@ -198,28 +209,67 @@ public enum HairBuilder {
                     p += (side * cos(a) + up * sin(a)) * style.curl * 0.006 * min(1, t * 3)
                 }
                 // Stay outside the head with volume, and in front of nothing below the neck.
-                let shellR = hr + V3(repeating: style.volume * (0.4 + 0.6 * t))
+                let shellR = hr + V3(repeating: style.volume * (0.25 + 0.75 * t) * (0.55 + 0.45 * layer) + 0.0015 * layer)
                 var d = (p - hc) / shellR
                 let dl = simd_length(d)
                 // Outside the head always; over the skull the hair hugs its shape (no spikes).
                 let overSkull = p.y > hc.y - hr.y * 0.35 && style.kind != .curly
-                if dl < 1 || (overSkull && dl > 1) { d = d / dl; p = hc + d * shellR }
+                if dl < 1 { d = d / dl; p = hc + d * shellR }
+                else if overSkull { let k = style.length < 0.1 ? 1 : smoothstep(hc.y - hr.y * 0.35, hc.y, p.y); p = p + (hc + d / dl * shellR - p) * k }
                 // Keep the face clear (fringes stop at the brows).
                 let browY = hc.y - hr.y * 0.25
                 if p.z > hc.z + hr.z * 0.35 && abs(p.x) < hr.x * 0.82 && p.y < browY + (style.fringe > 0 ? -0.005 : 0.03) {
                     if style.fringe > 0 && p.y > browY - 0.01 { p.y = browY - 0.005 }
                     else { p.x = (p.x >= 0 ? 1 : -1) * hr.x * 0.86; p.z = min(p.z, hc.z + hr.z * 0.6) }
                 }
+                if p.y > shoulderY && p.y < hc.y - hr.y * 0.3 {
+                    let maxX = hr.x + style.volume * 1.6 + 0.012
+                    if abs(p.x - hc.x) > maxX { p.x = hc.x + (p.x > hc.x ? maxX : -maxX) }
+                }
                 dir = simd_normalize(p - prev)
                 // Shoulders and back: long hair rests on them.
                 if p.y < neckY {
                     let shoulderTop = shoulderY + 0.02 + style.volume
-                    if abs(p.x) > 0.08 && p.y < shoulderTop && p.z > chestZ - 0.12 && p.z < chestZ + 0.12 { p.y = max(p.y, shoulderTop - 0.01); p.z += (p.z > chestZ ? 0.004 : -0.004) }
-                    if abs(p.x) < 0.12 && p.z > chestZ - 0.11 && p.z < chestZ + 0.02 { p.z = chestZ - 0.11 }
+                    if abs(p.x) > 0.08 && p.y < shoulderTop && p.z > chestZ - 0.12 && p.z < chestZ + 0.12 { p.y += (max(p.y, shoulderTop - 0.01) - p.y) * 0.25; p.z += (p.z > chestZ - 0.02 ? 0.006 : -0.006) }
+                    if abs(p.x) < 0.12 && p.z > chestZ - 0.11 && p.z < chestZ + 0.02 { p.z += (chestZ - 0.11 - p.z) * 0.7 }
                 }
                 pts.append(p)
             }
             if style.kind == .ponytail || style.kind == .bun { pts.append(contentsOf: tail(from: pts.last!, style: style, rng: &rng, ri: ri)) }
+            paths.append(pts)
+        }
+        // Clumps: neighbouring strands converge toward a shared guide toward the tips (tapered locks).
+        let clumpR: Float = 0.012 + 0.01 * style.curl
+        var guides: [Int] = []
+        for i in paths.indices where !guides.contains(where: { simd_distance(roots[$0].p, roots[i].p) < clumpR }) { guides.append(i) }
+        let clumpAmt: Float = style.kind == .curly ? 0.5 : (style.length > 0.1 ? 0.72 : 0.45)
+        let updo = style.kind == .ponytail || style.kind == .bun
+        for i in paths.indices where !updo {
+            guard let g = guides.min(by: { simd_distance(roots[$0].p, roots[i].p) < simd_distance(roots[$1].p, roots[i].p) }), g != i,
+                  paths[g].count == paths[i].count,
+                  simd_dot(simd_normalize(paths[g][1] - paths[g][0]), simd_normalize(paths[i][1] - paths[i][0])) > 0.75 else { continue }
+            let gp = paths[g], m = paths[i].count - 1
+            for k in 1...m {
+                let t = Float(k) / Float(m)
+                let w = clumpAmt * smoothstep(0.35, 1, t) * (0.7 + 0.3 * layers[i])
+                let target = gp[k] + (paths[i][0] - gp[0]) * 0.25
+                paths[i][k] += (target - paths[i][k]) * w
+            }
+            // Smooth kinks left by collision snapping.
+            for _ in 0..<2 where m > 2 { for k in 1..<m { paths[i][k] = paths[i][k] * 0.5 + (paths[i][k - 1] + paths[i][k + 1]) * 0.25 } }
+            // Re-apply the head shell after clumping so no strand cuts through the skull.
+            for k in 1...m {
+                let t = Float(k) / Float(m)
+                let shellR = hr + V3(repeating: style.volume * (0.25 + 0.75 * t) * (0.55 + 0.45 * layers[i]) + 0.0015 * layers[i])
+                let d = (paths[i][k] - hc) / shellR
+                let dl = simd_length(d)
+                let overSkull = paths[i][k].y > hc.y - hr.y * 0.35 && style.kind != .curly
+                if dl < 1 { paths[i][k] = hc + d / dl * shellR }
+                else if overSkull { let q = paths[i][k]; paths[i][k] = q + (hc + d / dl * shellR - q) * (style.length < 0.1 ? 1 : smoothstep(hc.y - hr.y * 0.35, hc.y, q.y)) }
+            }
+        }
+        for (ri, r) in roots.enumerated() {
+            let pts = paths[ri]
             // Card ribbon facing away from the head center.
             let w0 = style.cardWidth * (1.05 + 0.5 * rng.float())
             let base = UInt32(cards.positions.count)
@@ -261,7 +311,7 @@ public enum HairBuilder {
         } else if hemY < y0 - 0.05 && style.kind != .bun {
             let n = 9
             for c in 0..<n {
-                let a = (-0.8 + 1.6 * Float(c) / Float(n - 1)) * .pi   // around the back, from side to side
+                let a = (-0.62 + 1.24 * Float(c) / Float(n - 1)) * .pi   // around the back, from side to side
                 let start = hc + V3(sin(a) * (hr.x + style.volume), y0 - hc.y, cos(a) * (hr.z + style.volume) * 0.9)
                 let len = y0 - hemY
                 var def = ChainDef(parent: head, points: (0...4).map { start + V3(0, -len * Float($0) / 4, 0) })
@@ -289,8 +339,8 @@ public enum HairBuilder {
         let jitter = V3(rng.float(-1...1), 0, rng.float(-1...1)) * 0.012
         if style.kind == .bun {
             let a0 = Float(ri) * 0.37
-            for k in 1...8 {
-                let a = a0 + Float(k) * 0.7
+            for k in 1...16 {
+                let a = a0 + Float(k) * 0.35
                 pts.append(p0 + V3(cos(a) * 0.028, sin(a) * 0.024, -0.025 - 0.012 * sin(a * 0.5)) + jitter * 0.3)
             }
             return pts

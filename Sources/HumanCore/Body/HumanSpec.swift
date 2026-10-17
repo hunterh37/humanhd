@@ -48,7 +48,7 @@ public struct HumanSpec: Codable, Sendable, Hashable {
 public struct HumanModel: Sendable {
     public let spec: HumanSpec
     public let body: HumanBody
-    public let mesh: SkinnedMesh
+    public var mesh: SkinnedMesh
     /// Per vertex: (bone A, bone B, crease gain, stretch gain) for dynamic wrinkles.
     public let creases: [(Int, Int, Float, Float)]
     /// Simulated chains (hair, skirts); their bones follow the rig's bones in skinning order.

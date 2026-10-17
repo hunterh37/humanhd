@@ -55,6 +55,39 @@ public final class TriangleField: ContactWorld, @unchecked Sendable {
 
     func snapshot() -> [Patch] { lock.withLock { Array(patches.values) } }
 
+    /// Rasterizes geometry lying between `minY` and `maxY` onto an XZ grid of `width` x `depth`
+    /// cells of size `cell` starting at (`originX`, `originZ`). Row-major (z rows), true = occupied.
+    /// Each triangle is sampled at half-cell spacing so slanted and large faces mark only the
+    /// cells where they pass through the band.
+    public func occupancy(originX: Float, originZ: Float, cell c: Float, width w: Int, depth h: Int,
+                          minY: Float, maxY: Float) -> [Bool] {
+        var out = [Bool](repeating: false, count: max(0, w * h))
+        guard w > 0, h > 0, c > 0 else { return out }
+        let maxX = originX + Float(w) * c, maxZ = originZ + Float(h) * c
+        let step = c * 0.5
+        for p in snapshot() where p.hi.y >= minY && p.lo.y <= maxY && p.hi.x >= originX && p.lo.x <= maxX
+            && p.hi.z >= originZ && p.lo.z <= maxZ {
+            for (a, b, d) in p.tris {
+                let lo = simd_min(a, simd_min(b, d)), hi = simd_max(a, simd_max(b, d))
+                guard hi.y >= minY, lo.y <= maxY, hi.x >= originX, lo.x <= maxX, hi.z >= originZ, lo.z <= maxZ else { continue }
+                let edge = max(simd_length(b - a), max(simd_length(d - a), simd_length(d - b)))
+                let n = max(1, min(256, Int(ceil(edge / step))))
+                let inv = 1 / Float(n)
+                for i in 0...n {
+                    for j in 0...(n - i) {
+                        let u = Float(i) * inv, v = Float(j) * inv
+                        let q = a + (b - a) * u + (d - a) * v
+                        guard q.y >= minY, q.y <= maxY else { continue }
+                        let cx = Int(floor((q.x - originX) / c)), cz = Int(floor((q.z - originZ) / c))
+                        guard cx >= 0, cx < w, cz >= 0, cz < h else { continue }
+                        out[cz * w + cx] = true
+                    }
+                }
+            }
+        }
+        return out
+    }
+
     // MARK: queries
 
     public func ground(x: Float, z: Float, fromY: Float) -> (y: Float, normal: V3)? {
@@ -83,26 +116,31 @@ public final class TriangleField: ContactWorld, @unchecked Sendable {
     public func nearest(_ q: V3, radius: Float) -> (point: V3, normal: V3)? {
         guard Self.finite(q), radius.isFinite, radius >= 0 else { return nil }
         var bestD = radius * radius
-        var best: (point: V3, normal: V3)?
-        for p in snapshot() {
-            guard all(q + radius .>= p.lo), all(q - radius .<= p.hi) else { continue }
-            let k0 = key(q - radius), k1 = key(q + radius)
-            var seen = Set<Int32>()
+        var bestTri: (V3, V3, V3)?
+        var bestP = V3.zero
+        let k0 = key(q - radius), k1 = key(q + radius)
+        let qlo = q - radius, qhi = q + radius
+        lock.lock(); defer { lock.unlock() }
+        for p in patches.values {
+            guard all(qhi .>= p.lo), all(qlo .<= p.hi) else { continue }
             for x in k0.x...k1.x { for y in k0.y...k1.y { for z in k0.z...k1.z {
                 guard let list = p.cells[SIMD3(x, y, z)] else { continue }
-                for ti in list where seen.insert(ti).inserted {
+                for ti in list {
                     let (a, b, c) = p.tris[Int(ti)]
+                    // Cheap reject: triangle AABB outside the query sphere's box.
+                    let tl = simd_min(a, simd_min(b, c)), th = simd_max(a, simd_max(b, c))
+                    guard all(th .>= qlo), all(tl .<= qhi) else { continue }
                     let cp = Self.closestPoint(q, a, b, c)
                     let d = simd_length_squared(q - cp)
                     guard d < bestD else { continue }
-                    bestD = d
-                    var n = simd_normalize(simd_cross(b - a, c - a))
-                    if simd_dot(n, q - cp) < 0 { n = -n }
-                    best = (cp, n)
+                    bestD = d; bestP = cp; bestTri = (a, b, c)
                 }
             }}}
         }
-        return best
+        guard let (a, b, c) = bestTri else { return nil }
+        var n = simd_normalize(simd_cross(b - a, c - a))
+        if simd_dot(n, q - bestP) < 0 { n = -n }
+        return (bestP, n)
     }
 
     static func finite(_ p: V3) -> Bool { p.x.isFinite && p.y.isFinite && p.z.isFinite }

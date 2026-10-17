@@ -35,7 +35,13 @@ public final class HumanCharacter {
     var dq: [SIMD4<Float>]
     /// Secondary motion (hair, skirts). Nil when the character has no chains.
     public var dynamics: ChainSimulator?
+    /// Extra skinning bones appended after the chain bones (soft tissue driven by the app).
+    /// Receives the model-space rig bone transforms; returns skinning transforms.
+    public var extraSkinning: (@MainActor ([RigidTransform]) -> [RigidTransform])?
     var frameCounter = 0
+    /// Bones cut off (with everything below them), keyed by the chain root.
+    public internal(set) var severedRoots: [Int] = []
+    var hideBuffer: MTLBuffer?
     var pendingDT: Float = 0
     var pendingDTUsed: Float = 0
     /// Reusable bone buffers (> 4 KB of dual quaternions); one is reused once its command buffer completed.
@@ -125,6 +131,7 @@ public final class HumanCharacter {
         } else {
             skin = pose.skinning(body.skeleton)
         }
+        if let extraSkinning { skin += extraSkinning(pose.world(body.skeleton)) }
         if dq.count < skin.count * 2 { dq = Array(repeating: .zero, count: skin.count * 2) }
         for (i, s) in skin.enumerated() {
             let d = DualQuat(s)
@@ -146,7 +153,7 @@ public final class HumanCharacter {
                 boneBuffers.append((b, cb))
             }
         }
-        dq.withUnsafeBufferPointer { skinner.encode(gpu, bones: $0, into: enc, output: out, boneBuffer: bb) }
+        dq.withUnsafeBufferPointer { skinner.encode(gpu, bones: $0, into: enc, output: out, boneBuffer: bb, hide: hideBuffer) }
     }
 
     /// Model-space bone transforms of the current pose (attachments, IK targets, look-at).

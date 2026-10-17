@@ -86,6 +86,8 @@ struct PaintParams {
     float sunExposure;  // 0 ... 1, tan contrast
     float blotch;       // redness variation 0 ... 1
     float veins;        // visible veins 0 ... 1
+    float bodyHair;     // body hair density 0 ... 1
+    float pad0, pad1, pad2;
     float4 eyeL;        // xyz eye center (canonical)
     float4 eyeR;
     float4 mouth;       // xyz mouth center
@@ -158,6 +160,115 @@ float strands(float2 q, float density, float angle, float lengthMM, float widthM
     return cov;
 }
 
+// ------------------------------------------------------------ body regions (canonical meters)
+// Soft anatomical masks for the lower body, waist and body-hair zones. Shared by the color
+// pass (paintSkin) and the height pass (skinHeight). Anchors measured on the canonical hm08
+// mesh: pelvis y=0.889, navel y=1.10, hip joints x=±0.110, knee y=0.447, armpit (±0.138, 1.326).
+
+// Pubic triangle: wide below the navel, narrowing to the perineum, front only.
+float pubicMask(float3 p) {
+    float vert = sstep(0.83, 0.885, p.y) * (1.0 - sstep(0.985, 1.035, p.y));
+    float halfW = mix(0.026, 0.075, sstep(0.87, 0.99, p.y));
+    float lat = 1.0 - sstep(halfW * 0.6, halfW, abs(p.x));
+    float front = sstep(0.04, 0.09, p.z);
+    return vert * lat * front;
+}
+float segDist(float3 p, float3 a, float3 b) {
+    float3 ab = b - a;
+    float t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+    return length(p - (a + ab * t));
+}
+// The vulva channel between the thighs (measured on the canonical mesh): from the mons underside
+// (0, 0.83, 0.13) down to the perineum (0, 0.71, 0.04), anus at (0, 0.736, -0.025).
+// Vulva body: everything along the cleft channel.
+float perinealMask(float3 p) {
+    float d = segDist(p, float3(0.0, 0.83, 0.125), float3(0.0, 0.71, 0.035));
+    return (1.0 - sstep(0.012, 0.035, d)) * sstep(-0.02, 0.01, p.z);
+}
+// Genital cleft: the slit itself, following the channel.
+float cleftMask(float3 p) {
+    float d = segDist(p, float3(0.0, 0.80, 0.115), float3(0.0, 0.714, 0.044));
+    return 1.0 - sstep(0.0025, 0.007, d);
+}
+// Labia majora: the two folds flanking the cleft.
+float labiaMask(float3 p) {
+    float side = p.x >= 0.0 ? 1.0 : -1.0;
+    float d = segDist(p, float3(side * 0.016, 0.795, 0.115), float3(side * 0.013, 0.718, 0.048));
+    return 1.0 - sstep(0.006, 0.016, d);
+}
+// Vulvar mucosa: inside the cleft — thinner, wetter, more blood, less melanin.
+float mucosaMask(float3 p) {
+    float d = segDist(p, float3(0.0, 0.795, 0.110), float3(0.0, 0.720, 0.050));
+    return 1.0 - sstep(0.003, 0.009, d);
+}
+// Perineal raphe: faint seam from the fourchette back to the anus.
+float rapheMask(float3 p) {
+    float d = segDist(p, float3(0.0, 0.712, 0.040), float3(0.0, 0.732, -0.020));
+    return 1.0 - sstep(0.0015, 0.005, d);
+}
+// Perianal pigmentation ring around the anus.
+float perianalMask(float3 p) {
+    float r = length(p - float3(0.0, 0.736, -0.025));
+    return sstep(0.006, 0.012, r) * (1.0 - sstep(0.016, 0.030, r));
+}
+// Anal pucker center: the dimple inside the ring.
+float analCoreMask(float3 p) {
+    return 1.0 - sstep(0.004, 0.011, length(p - float3(0.0, 0.736, -0.025)));
+}
+// Mons pubis: soft mound above the genitals.
+float monsMask(float3 p) {
+    float3 d = (p - float3(0.0, 0.945, 0.0)) * float3(1.3, 1.0, 0.25);
+    return (1.0 - sstep(0.05, 0.11, length(d))) * sstep(0.05, 0.10, p.z);
+}
+// Inguinal (groin) crease: from the front of the hip bone down toward the genitals.
+float groinCreaseMask(float3 p) {
+    float side = p.x >= 0.0 ? 1.0 : -1.0;
+    float d = segDist(p, float3(side * 0.118, 0.955, 0.095), float3(side * 0.034, 0.862, 0.05));
+    return 1.0 - sstep(0.004, 0.011, d);
+}
+// Gluteal fold: crease under the buttocks, back side, drooping toward the hips.
+float glutealFoldMask(float3 p) {
+    float foldY = 0.815 - 0.10 * max(0.0, abs(p.x) - 0.05);
+    float line = 1.0 - sstep(0.006, 0.018, abs(p.y - foldY));
+    float lat = sstep(0.035, 0.07, abs(p.x)) * (1.0 - sstep(0.16, 0.21, abs(p.x)));
+    float back = 1.0 - sstep(-0.09, -0.03, p.z);
+    return line * lat * back;
+}
+// Linea alba: faint vertical line from the pubis to the navel.
+float lineaAlbaMask(float3 p) {
+    return (1.0 - sstep(0.002, 0.006, abs(p.x)))
+         * sstep(0.94, 0.98, p.y) * (1.0 - sstep(1.06, 1.10, p.y))
+         * sstep(0.10, 0.14, p.z);
+}
+// Iliac crest: hip bone ridge at the waist sides.
+float iliacMask(float3 p) {
+    float lat = sstep(0.10, 0.125, abs(p.x)) * (1.0 - sstep(0.155, 0.19, abs(p.x)));
+    float vert = sstep(0.985, 1.01, p.y) * (1.0 - sstep(1.045, 1.075, p.y));
+    float mid = 1.0 - sstep(0.09, 0.14, abs(p.z - 0.01));
+    return lat * vert * mid;
+}
+// Armpit hollow.
+float armpitMask(float3 p) {
+    float side = p.x >= 0.0 ? 1.0 : -1.0;
+    return 1.0 - sstep(0.026, 0.055, length(p - float3(side * 0.138, 1.326, 0.004)));
+}
+// Limb surface in strand space: q = (along mm from a, lateral mm), mask = soft tube, outer = side bias.
+struct LimbQ { float2 q; float mask; float outer; };
+LimbQ limbSpace(float3 p, float3 a, float3 b, float radius, float3 outerDir) {
+    LimbQ r;
+    float3 ab = b - a;
+    float len = max(length(ab), 1e-4);
+    float3 axis = ab / len;
+    float t = dot(p - a, axis);
+    float3 rel = p - (a + axis * t);
+    float d = length(rel);
+    float ends = sstep(-0.02, 0.01, t) * (1.0 - sstep(len - 0.01, len + 0.02, t));
+    r.mask = (1.0 - sstep(radius * 0.7, radius, d)) * ends;
+    r.q = float2(t * 1000.0, dot(rel, outerDir) * 1000.0);
+    r.outer = 0.5 + 0.5 * dot(rel / max(d, 1e-4), normalize(outerDir));
+    return r;
+}
+
 // Height of the skin surface (meters, small) at canonical position p.
 float skinHeight(float3 p, Fields f, constant PaintParams &P, float poreScale) {
     float age = P.age;
@@ -209,10 +320,39 @@ float skinHeight(float3 p, Fields f, constant PaintParams &P, float poreScale) {
         float rings = pow(abs(sin(p.y * 2400.0 + p.x * 900.0 + vnoise(p * 500.0, P.seed + 9u))), 8.0);
         h -= 0.00004 * rings * f.creases;
     }
-    // Areola: Montgomery bumps.
+    // Areola and nipple: Montgomery bumps on the ring, raised papilla with a dimpled tip.
     if (f.areola > 0.2) {
         float4 w = worley3(p / 0.0025, P.seed + 21u);
-        h += 0.00006 * (1.0 - sstep(0.0, 0.25, w.x)) * sstep(0.5, 0.9, w.z) * f.areola;
+        float nipple = sstep(0.72, 0.95, f.areola);
+        float ring = f.areola * (1.0 - nipple);
+        h += 0.00006 * (1.0 - sstep(0.0, 0.25, w.x)) * sstep(0.5, 0.9, w.z) * ring;
+        // Papilla: raised core, fine pits, tiny central dimple.
+        h += 0.00045 * sstep(0.80, 0.98, f.areola);
+        h -= 0.00012 * sstep(0.965, 1.0, f.areola);
+        h -= 0.00004 * (1.0 - sstep(0.1, 0.35, w.x)) * nipple;
+        // Fine radial creases across the ring.
+        float rad = pow(abs(sin(atan2(p.x, p.z) * 14.0 + vnoise(p * 700.0, P.seed + 23u))), 8.0);
+        h -= 0.00003 * rad * ring;
+    }
+    // Lower body and waist relief (body atlas only).
+    if (P.isFace < 0.5) {
+        // Navel: recessed pit with a slightly raised rim.
+        h -= 0.0009 * f.navel;
+        h += 0.0003 * (4.0 * f.navel * (1.0 - f.navel));
+        // Mons mound, genital cleft, groin and gluteal fold grooves.
+        h += 0.00005 * monsMask(p);
+        h -= 0.00008 * cleftMask(p);
+        h -= 0.00012 * groinCreaseMask(p);
+        h -= 0.00014 * glutealFoldMask(p);
+        // Fine vulva/perianal detail; the big shapes (lips, cavity, rim) live in the mesh now.
+        h += 0.00006 * labiaMask(p);
+        h -= 0.00004 * rapheMask(p);
+        float peri = perianalMask(p);
+        if (peri > 0.01) {
+            float rad2 = pow(abs(sin(atan2(p.x, p.y - 0.736) * 9.0 + vnoise(p * 900.0, P.seed + 24u))), 6.0);
+            h -= 0.00004 * rad2 * peri;
+        }
+        h -= 0.00006 * analCoreMask(p);
     }
     return h;
 }
@@ -229,7 +369,7 @@ SkinOut paintSkin(float3 p, float3 nIn, float4 t4, Fields f, constant PaintParam
     float sun = sstep(1.25, 1.45, p.y) * (1.0 - f.scalp) + 0.6 * f.creases * 0.0;
     float mel = 1.0;
     mel *= mix(1.0, 0.42, f.palms);
-    mel *= 1.0 + 0.85 * f.areola * sstep(0.25, 0.6, f.areola);
+    mel *= 1.0 + 0.45 * f.areola * sstep(0.25, 0.6, f.areola);
     mel *= 1.0 + 0.12 * f.creases + 0.10 * f.eyelid + 0.18 * f.underEye;
     mel *= mix(1.0, 0.92, f.lips);
     mel *= 1.0 + P.sunExposure * 0.12 * sun;
@@ -248,7 +388,7 @@ SkinOut paintSkin(float3 p, float3 nIn, float4 t4, Fields f, constant PaintParam
     hem += 0.35 * f.nose * sstep(0.4, 0.9, f.nose);
     hem += 0.55 * f.ears;
     hem += 0.30 * f.palms + 0.22 * f.creases + 0.25 * f.eyelid + 0.2 * f.lidMargin;
-    hem += 0.12 * f.chin + 0.10 * f.areola;
+    hem += 0.12 * f.chin + 0.04 * f.areola;
     hem *= 1.0 + 0.16 * P.blotch * blot + 0.06 * vnoise(p * 140.0, P.seed + 42u);
     // Tiny broken capillaries around the nose for older skin.
     if (f.nose > 0.2 || f.cheeks > 0.2) {
@@ -268,6 +408,43 @@ SkinOut paintSkin(float3 p, float3 nIn, float4 t4, Fields f, constant PaintParam
         float4 w = worley3(p / 0.05, P.seed + 61u);
         float m = (1.0 - sstep(0.025, 0.045, w.x)) * step(1.0 - 0.18 * P.moles, w.z);
         freck = max(freck, m * 1.6);
+    }
+    // ---------------- lower body and waist anatomy (body atlas only)
+    if (P.isFace < 0.5) {
+        float perin = perinealMask(p);
+        float mons = monsMask(p);
+        float groin = groinCreaseMask(p);
+        float gfold = glutealFoldMask(p);
+        float linea = lineaAlbaMask(p);
+        float iliac = iliacMask(p);
+        float cleft = cleftMask(p);
+        float labia = labiaMask(p);
+        float mucosa = mucosaMask(p);
+        float raphe = rapheMask(p);
+        float perianal = perianalMask(p);
+        // Genital and mons skin carries more melanin and blood (like the areola).
+        mel *= 1.0 + 0.42 * perin + 0.20 * cleft + 0.08 * mons;
+        hem += 0.45 * perin + 0.22 * cleft + 0.06 * mons;
+        // Labia: pigmented outer folds; mucosa inside the cleft: blood-rich, less melanin.
+        // The pucker center is darkest; the vaginal interior falls into warm shadow.
+        float pucker = analCoreMask(p);
+        mel *= 1.0 + 0.30 * labia + 0.22 * perianal + 0.12 * raphe + 0.38 * pucker;
+        mel *= 1.0 - 0.25 * mucosa;
+        hem += 0.18 * labia + 1.15 * mucosa + 0.08 * raphe + 0.20 * pucker;
+        // Crease lines sit in shadow and read redder.
+        mel *= 1.0 + 0.16 * groin + 0.14 * gfold + 0.09 * linea + 0.06 * iliac;
+        hem += 0.10 * groin + 0.08 * gfold + 0.05 * iliac;
+        // Navel recess is pigmented and slightly damp.
+        mel *= 1.0 + 0.35 * f.navel;
+        hem += 0.10 * f.navel;
+    }
+    // Nipple and areola: two-tone pigmentation with mottling (any atlas).
+    {
+        float nipple = sstep(0.72, 0.95, f.areola);
+        float ring = f.areola * (1.0 - nipple);
+        float mottle = 0.5 + 0.5 * fbm3(p * 900.0, 3, P.seed + 55u);
+        mel *= 1.0 + 0.85 * nipple + 0.45 * ring * mottle;
+        hem += 0.22 * nipple + 0.10 * ring;
     }
     // ---------------- hair coverage (A): eyebrows, stubble, lash line
     float hair = 0.0;
@@ -300,6 +477,65 @@ SkinOut paintSkin(float3 p, float3 nIn, float4 t4, Fields f, constant PaintParam
         // Follicle shadow: grey-blue under shaved skin.
         hair = max(hair, max(cov, dens * 0.18));
     }
+    // ---------------- body hair (A): pubic, armpits, forearms, shins, abdominal trail
+    if (P.bodyHair > 0.001 && P.isFace < 0.5) {
+        float bh = P.bodyHair;
+        float side = p.x >= 0.0 ? 1.0 : -1.0;
+        // A body-atlas texel is ~mm wide while a hair is ~0.06 mm, so a strand only covers a
+        // fraction of a texel: thin the coverage accordingly or hair reads as solid patches.
+        float thin = clamp(0.4 / max(texMM, 0.4), 0.05, 1.0);
+        // Pubic triangle: dense, growing downward and curling toward the midline.
+        float pub = pubicMask(p);
+        if (pub > 0.003) {
+            float2 q = float2(p.x * 1000.0, p.y * 1000.0);
+            float dens = saturate(pub * mix(0.8, 0.95, male) * bh);
+            float cov = strands(q, dens, -1.5708 - 0.35 * side, 7.0, 0.08, texMM, P.seed + 101u, 0.65);
+            hair = max(hair, saturate(cov * thin * mix(1.9, 2.4, male) * (0.65 + 0.35 * pub)));
+        }
+        // Labia fringe and perineal wisps: sparser, finer, growing down-back.
+        float fringe = max(labiaMask(p), max(perinealMask(p) * 0.5, perianalMask(p) * 0.35));
+        if (fringe > 0.003) {
+            float2 q = float2(p.x * 1000.0, p.y * 1000.0);
+            float dens = saturate(fringe * 0.4 * bh);
+            float cov = strands(q, dens, -1.9 - 0.3 * side, 5.0, 0.05, texMM, P.seed + 103u, 0.8);
+            hair = max(hair, cov * thin * 0.9);
+        }
+        // Armpits: tuft in the hollow, growing downward.
+        float pit = armpitMask(p);
+        if (pit > 0.003) {
+            float2 q = float2(p.z * 1000.0, p.y * 1000.0);
+            float dens = saturate(pit * mix(0.3, 0.6, male) * bh);
+            float cov = strands(q, dens, -1.35, 7.0, 0.06, texMM, P.seed + 107u, 0.9);
+            hair = max(hair, cov * thin * 1.3);
+        }
+        // Forearms (elbow -> wrist): outer side biased, growing toward the hand.
+        LimbQ fa = limbSpace(p, float3(side * 0.313, 1.166, 0.013), float3(side * 0.431, 1.062, 0.176),
+                             0.052, float3(side * 0.6, 0.2, 0.5));
+        if (fa.mask > 0.003) {
+            float dens = saturate(fa.mask * mix(0.10, 0.5, male) * bh * mix(0.35, 1.0, fa.outer));
+            float cov = strands(fa.q, dens, 0.0, 4.5, 0.05, texMM, P.seed + 113u, 0.8);
+            hair = max(hair, cov * thin * mix(0.55, 1.3, male));
+        }
+        // Shins (knee -> ankle): front biased, growing down.
+        LimbQ sh = limbSpace(p, float3(side * 0.158, 0.447, 0.032), float3(side * 0.20, 0.075, 0.0),
+                             0.055, float3(0.0, 0.1, 1.0));
+        if (sh.mask > 0.003) {
+            float dens = saturate(sh.mask * mix(0.08, 0.55, male) * bh * mix(0.3, 1.0, sh.outer));
+            float cov = strands(sh.q, dens, 0.0, 5.0, 0.05, texMM, P.seed + 127u, 0.85);
+            hair = max(hair, cov * thin * mix(0.45, 1.2, male));
+        }
+        // Abdominal trail (faint on female) and male chest.
+        float trail = (1.0 - sstep(0.008, 0.02, abs(p.x)))
+                    * sstep(0.96, 1.0, p.y) * (1.0 - sstep(1.09, 1.12, p.y)) * sstep(0.10, 0.14, p.z);
+        float chest = sstep(1.13, 1.18, p.y) * (1.0 - sstep(1.28, 1.33, p.y)) * sstep(0.10, 0.14, p.z)
+                    * (1.0 - sstep(0.13, 0.17, abs(p.x))) * male * male;
+        float tm = max(trail * (0.15 + 0.85 * male), chest);
+        if (tm > 0.003) {
+            float2 q = float2(p.x * 1000.0, p.y * 1000.0);
+            float cov = strands(q, saturate(tm * 0.5 * bh), 1.5708, 5.0, 0.06, texMM, P.seed + 131u, 0.9);
+            hair = max(hair, cov * thin * mix(0.5, 1.4, male));
+        }
+    }
 
     // ---------------- height -> normal (central differences along the tangent frame)
     float poreScale = P.isFace > 0.5 ? 1.0 : 1.35;
@@ -326,6 +562,26 @@ SkinOut paintSkin(float3 p, float3 nIn, float4 t4, Fields f, constant PaintParam
     cav *= 1.0 - 0.35 * f.lidMargin * 0.0;
     float thick = saturate(0.08 + 0.85 * f.ears + 0.35 * f.nose * sstep(0.6, 1.0, f.nose) + 0.45 * f.eyelid + 0.3 * f.lips + 0.35 * f.palms * 0.0 + 0.4 * f.creases);
     float spec = saturate(0.3 + 0.3 * tzone + 0.62 * f.lips + 0.7 * f.lidMargin - 0.2 * hair);
+    // Genital skin is thinner, moister and more translucent; the navel sits in shadow.
+    if (P.isFace < 0.5) {
+        float perin = perinealMask(p);
+        float mucosa = mucosaMask(p);
+        rough = mix(rough, 0.42, perin * 0.6);
+        rough = mix(rough, 0.28, mucosa * 0.8);
+        spec = saturate(spec + 0.2 * perin + 0.45 * mucosa);
+        thick = saturate(thick + 0.3 * perin + 0.55 * mucosa + 0.1 * monsMask(p));
+        cav *= 1.0 - 0.25 * f.navel;
+        // Cavity occlusion: vaginal interior and anal pit fall into shadow.
+        cav *= 1.0 - 0.4 * mucosa - 0.45 * analCoreMask(p);
+    }
+    // Nipple: slightly rough and moist; areola ring a touch rougher than skin.
+    {
+        float nipple = sstep(0.72, 0.95, f.areola);
+        rough = mix(rough, 0.5, nipple * 0.4);
+        rough += 0.05 * f.areola * (1.0 - nipple);
+        spec = saturate(spec + 0.18 * nipple);
+        thick = saturate(thick + 0.25 * f.areola);
+    }
 
     SkinOut o;
     o.a = float4(saturate(mel * 0.5), saturate(hem * 0.25), saturate(freck), saturate(hair));

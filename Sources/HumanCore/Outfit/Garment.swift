@@ -26,9 +26,99 @@ public struct Garment: Codable, Sendable, Hashable, Identifiable {
     /// Relaxation passes: cloth bridges hollows (between breasts, around the navel, spine groove)
     /// instead of shrink-wrapping them. 0 = skin-tight (leggings), 6-12 = shirts, 16+ = coats.
     public var drape: Int = 8
+    /// Contrast fabric key for bands along the cut edges (nil = no trim). Needs `cut.kind != .none`.
+    public var trim: String? = nil
+    /// Trim band width (m).
+    public var trimWidth: Float = 0.022
+    /// Analytic cut lines: triangles are clipped exactly on smooth necklines, armholes and hems.
+    public var cut = Cut()
+    /// Text printed on the cloth (numbers, wordmarks, names), conformed to the surface.
+    public var emblems: [Emblem] = []
+    /// Shoes: separate sole material for triangles below `soleHeight` (m).
+    public var sole: String? = nil
+    public var soleHeight: Float = 0.026
 
     public init(id: String, name: String, layer: Int, coverage: Coverage, material: String) {
         self.id = id; self.name = name; self.layer = layer; self.coverage = coverage; self.material = material
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, layer, coverage, offset, flare, folds, material, hem, hidesBody, drape, trim, trimWidth, cut, emblems, sole, soleHeight
+    }
+
+    /// Tolerant decoding: fields added after a payload was written fall back to defaults.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(id: try c.decode(String.self, forKey: .id), name: try c.decode(String.self, forKey: .name), layer: try c.decode(Int.self, forKey: .layer),
+                  coverage: try c.decode(Coverage.self, forKey: .coverage), material: try c.decode(String.self, forKey: .material))
+        if let v = try c.decodeIfPresent(Float.self, forKey: .offset) { offset = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .flare) { flare = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .folds) { folds = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .hem) { hem = v }
+        if let v = try c.decodeIfPresent(Bool.self, forKey: .hidesBody) { hidesBody = v }
+        if let v = try c.decodeIfPresent(Int.self, forKey: .drape) { drape = v }
+        trim = try c.decodeIfPresent(String.self, forKey: .trim)
+        if let v = try c.decodeIfPresent(Float.self, forKey: .trimWidth) { trimWidth = v }
+        if let v = try c.decodeIfPresent(Cut.self, forKey: .cut) { cut = v }
+        if let v = try c.decodeIfPresent([Emblem].self, forKey: .emblems) { emblems = v }
+        sole = try c.decodeIfPresent(String.self, forKey: .sole)
+        if let v = try c.decodeIfPresent(Float.self, forKey: .soleHeight) { soleHeight = v }
+    }
+
+    /// Smooth cut lines for sleeveless tops and shorts, in canonical-body meters. The cloth boundary
+    /// follows these curves exactly instead of the mesh's triangle staircase.
+    public struct Cut: Codable, Sendable, Hashable {
+        public enum Kind: String, Codable, Sendable { case none, sleeveless, shorts, sock, shoe }
+        public var kind: Kind = .none
+        /// Neckline half width at the shoulder line.
+        public var neckHalfWidth: Float = 0.075
+        /// Neckline depth below the neck base, front and back.
+        public var neckFront: Float = 0.12
+        public var neckBack: Float = 0.05
+        /// Depth of the neckline edge at the strap (below the neck base).
+        public var neckSide: Float = 0.03
+        /// 0 round (U) ... 1 pointed (V).
+        public var neckV: Float = 0.3
+        /// Outer edge of the shoulder strap at the shoulder top (|x|).
+        public var strapOuter: Float = 0.15
+        /// Armhole bottom relative to the armpit (m, positive = lower).
+        public var armholeDrop: Float = 0.0
+        /// Height of the shoulder top above the shoulder joint where the strap meets the armhole.
+        public var armholeTop: Float = 0.045
+        /// Armhole curve exponent: higher = straighter strap edge, sharper sweep to the side near the armpit.
+        public var armholeSweep: Float = 2.4
+        /// Raised hem at the sides (m).
+        public var slit: Float = 0.0
+        /// Extra standoff over the chest (m): the cloth hangs in front of the pectorals.
+        public var chestEase: Float = 0.035
+        /// Trim along the hem too (otherwise neck and armholes only).
+        public var trimHem = false
+        /// Shorts: contrast side stripe half width (m); 0 = none.
+        public var stripe: Float = 0.0
+        public init(kind: Kind = .none) { self.kind = kind }
+        public func with(_ e: (inout Cut) -> Void) -> Cut { var c = self; e(&c); return c }
+    }
+
+    /// Printed lettering: filled glyph triangles lying 1.5 mm above the cloth, with an optional offset shadow.
+    public struct Emblem: Codable, Sendable, Hashable {
+        public enum Side: String, Codable, Sendable { case front, back }
+        public var text: String
+        public var side: Side = .front
+        /// RRGGBB fill and optional shadow colors.
+        public var color: UInt32 = 0xFFFFFF
+        public var shadow: UInt32? = nil
+        /// Letter height (m) and distance of the text center below the armpit line (m, negative = above).
+        public var height: Float = 0.1
+        public var drop: Float = 0.1
+        /// Sideways offset of the text center (m, body left positive from the wearer's view is not mirrored).
+        public var x: Float = 0
+        /// Extra advance between letters (fraction of height).
+        public var tracking: Float = 0.04
+        /// Maximum text width (m); the text shrinks to fit. 0 = unlimited.
+        public var maxWidth: Float = 0
+        public init(_ text: String, side: Side = .front, color: UInt32 = 0xFFFFFF, shadow: UInt32? = nil, height: Float = 0.1, drop: Float = 0.1) {
+            self.text = text; self.side = side; self.color = color; self.shadow = shadow; self.height = height; self.drop = drop
+        }
     }
     public func with(_ e: (inout Garment) -> Void) -> Garment { var c = self; e(&c); return c }
     /// Same garment in another color ("RRGGBB" hex appended to the material key).
@@ -60,7 +150,31 @@ public struct Garment: Codable, Sendable, Hashable, Identifiable {
         public var feet: Float = 0
         /// Hands (gloves).
         public var hands = false
+        /// Shoe opening height above the ankle joint (m): 0.035 low-top, 0.09 high-top.
+        public var ankle: Float = 0.035
         public init() {}
+
+        enum CodingKeys: String, CodingKey {
+            case torso, neckDepth, neckScoop, torsoBottom, sleeves, legs, pelvis, rise, skirt, feet, hands, ankle
+        }
+
+        /// Tolerant decoding: fields added after a payload was written fall back to defaults.
+        public init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.init()
+            if let v = try c.decodeIfPresent(Bool.self, forKey: .torso) { torso = v }
+            if let v = try c.decodeIfPresent(Float.self, forKey: .neckDepth) { neckDepth = v }
+            if let v = try c.decodeIfPresent(Float.self, forKey: .neckScoop) { neckScoop = v }
+            if let v = try c.decodeIfPresent(Float.self, forKey: .torsoBottom) { torsoBottom = v }
+            if let v = try c.decodeIfPresent(Float.self, forKey: .sleeves) { sleeves = v }
+            if let v = try c.decodeIfPresent(Float.self, forKey: .legs) { legs = v }
+            if let v = try c.decodeIfPresent(Bool.self, forKey: .pelvis) { pelvis = v }
+            if let v = try c.decodeIfPresent(Float.self, forKey: .rise) { rise = v }
+            if let v = try c.decodeIfPresent(Float.self, forKey: .skirt) { skirt = v }
+            if let v = try c.decodeIfPresent(Float.self, forKey: .feet) { feet = v }
+            if let v = try c.decodeIfPresent(Bool.self, forKey: .hands) { hands = v }
+            if let v = try c.decodeIfPresent(Float.self, forKey: .ankle) { ankle = v }
+        }
     }
 }
 
@@ -199,7 +313,7 @@ public enum GarmentFitter {
                 if lt < c.legs { inside = true; t = max(0, (c.legs - lt) / 0.7) }
             }
             if c.feet > 0 && (isFoot || isLeg) {
-                let top: Float = c.feet <= 1 ? lm.ankleY + 0.035 : c.feet <= 2 ? lm.calfY : lm.kneeY - 0.06
+                let top: Float = c.feet <= 1 ? lm.ankleY + c.ankle : c.feet <= 2 ? lm.calfY : lm.kneeY - 0.06
                 if isFoot || p.y < top { inside = true; t = 1 }
             }
             cov[i] = inside
@@ -210,6 +324,8 @@ public enum GarmentFitter {
 
     /// Fits a garment to a body (render mesh must be the body's own skinned mesh).
     public static func fit(_ g: Garment, body: HumanBody, layerOffset: Float = 0) -> FittedGarment {
+        if g.cut.kind == .shoe { return fitShoe(g, body: body, layerOffset: layerOffset) }
+        if g.cut.kind != .none { return fitClipped(g, body: body, layerOffset: layerOffset) }
         let level = body.topologyLevel
         let info = info(level: level)
         let n = info.canon.count
@@ -328,6 +444,14 @@ public enum GarmentFitter {
             }
         }
         m.parts = [SkinnedMesh.Part(slot: .garment, material: g.material, indices: idx)]
+        if let sole = g.sole {
+            var upper: [UInt32] = [], rubber: [UInt32] = []
+            for t in stride(from: 0, to: idx.count, by: 3) {
+                let top = max(m.positions[Int(idx[t])].y, m.positions[Int(idx[t + 1])].y, m.positions[Int(idx[t + 2])].y)
+                if top < g.soleHeight { rubber += [idx[t], idx[t + 1], idx[t + 2]] } else { upper += [idx[t], idx[t + 1], idx[t + 2]] }
+            }
+            m.parts = [SkinnedMesh.Part(slot: .garment, material: g.material, indices: upper), SkinnedMesh.Part(slot: .garment, material: sole, indices: rubber)]
+        }
         m.computeFrames(weld: true)
         source += Array(repeating: -1, count: m.positions.count - source.count)
         var chains: [ChainDef] = []

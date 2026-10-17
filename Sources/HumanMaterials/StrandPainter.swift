@@ -85,6 +85,7 @@ public final class StrandPainter: @unchecked Sendable {
                 cov = max(cov, (1.0 - smoothstep(width * 0.5, width * 0.5 + px, d)) * rootFade);
             }
         }
+        if (S.ramp > 0.5) cov = max(cov, smoothstep(0.62, 0.9, v));
         out.write(float4(cov), gid);
     }
     """#

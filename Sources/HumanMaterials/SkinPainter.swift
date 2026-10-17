@@ -53,6 +53,8 @@ public final class SkinPainter: @unchecked Sendable {
         var age: Float, sex: Float, freckles: Float, moles: Float, stubble: Float, stubbleDensity: Float
         var brows: Float, browThickness: Float, wrinkles: Float, pores: Float, texelMeters: Float
         var seed: UInt32, isFace: Float, sunExposure: Float, blotch: Float, veins: Float
+        // Keep the scalar block a multiple of 16 bytes so the float4s stay aligned with Metal.
+        var bodyHair: Float, pad0: Float, pad1: Float, pad2: Float
         var eyeL: SIMD4<Float>, eyeR: SIMD4<Float>, mouth: SIMD4<Float>, headAxis: SIMD4<Float>
     }
 
@@ -136,6 +138,7 @@ public final class SkinPainter: @unchecked Sendable {
         return PaintParams(age: d.age, sex: d.sex, freckles: d.freckles, moles: d.moles, stubble: d.stubble, stubbleDensity: d.stubbleDensity,
                            brows: d.brows, browThickness: d.browThickness, wrinkles: d.wrinkles, pores: d.pores, texelMeters: texel,
                            seed: d.seed, isFace: face ? 1 : 0, sunExposure: d.sunExposure, blotch: d.blotch, veins: 0,
+                           bodyHair: d.bodyHair, pad0: 0, pad1: 0, pad2: 0,
                            eyeL: SIMD4(eyeL, 0), eyeR: SIMD4(eyeR, 0), mouth: SIMD4(mouth, 0), headAxis: SIMD4(fp.center.z, lm["head"]?.y ?? 1.5, 0, 0))
     }
 

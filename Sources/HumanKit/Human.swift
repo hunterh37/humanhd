@@ -48,6 +48,19 @@ public enum Human {
         return ch
     }
 
+    /// Flat PBR cloth from a fabric spec: the weave is finer than a pixel at play distance, and untextured
+    /// materials render identically on device and in the simulator (synthesized fabric maps came out black there).
+    static func garmentMaterial(_ s: MaterialSpec) -> any RealityKit.Material {
+        var m = PhysicallyBasedMaterial()
+        m.baseColor = .init(tint: .init(linear: s.baseColor))
+        m.roughness = .init(floatLiteral: s.roughness)
+        m.metallic = .init(floatLiteral: s.metallic)
+        m.specular = .init(floatLiteral: s.specular)
+        if s.clearcoat > 0 { m.clearcoat = .init(floatLiteral: s.clearcoat) }
+        m.faceCulling = s.twoSided ? .none : .back
+        return m
+    }
+
     /// Materials for mesh parts (in order).
     public static func materials(for parts: [SkinnedMesh.Part], spec: HumanSpec) async throws -> [any RealityKit.Material] {
         let a = spec.appearance
@@ -60,9 +73,7 @@ public enum Human {
             case .eyelash: out.append(try EyeMaterial.lashes(color: a.hairColor))
             case .hair: out.append(p.material == "hairshell" ? try HairMaterial.make(.shell, color: a.hairColor) : try await HairMaterial.cards(color: a.hairColor))
             case .garment:
-                let cache = RealMaterialCache.shared
-                if cache.overrides[p.material] == nil { cache.overrides[p.material] = GarmentFabrics.spec(p.material) }
-                out.append(await cache.materialAsync(p.material))
+                out.append(garmentMaterial(GarmentFabrics.spec(p.material)))
             case .teeth:
                 var m = PhysicallyBasedMaterial(); m.baseColor = .init(tint: .init(linear: SIMD3(0.62, 0.58, 0.5))); m.roughness = 0.22; m.specular = 0.5
                 out.append(m)
@@ -100,12 +111,12 @@ public enum HairMaterial {
         m.roughness = 0.42
         m.specular = 0.45
         m.faceCulling = .none
-        var s = StrandPainter.Spec(); s.strands = 40; s.width = 0.09; s.clump = 0; s.drift = 0.1; s.minLength = 1; s.seed = 4; s.ramp = 1
+        var s = StrandPainter.Spec(); s.strands = 40; s.width = 0.16; s.clump = 0; s.drift = 0.1; s.minLength = 1; s.seed = 4; s.ramp = 1
         let t = try strands(2, s, w: 256, h: 256)
-        m.blending = .transparent(opacity: .init(scale: 1, texture: .init(t)))
-        m.opacityThreshold = 0.25
-        m.baseColor = .init(tint: .init(linear: color * 0.8))
-        m.textureCoordinateTransform = .init(offset: .zero, scale: SIMD2(30, 1))
+        // Opaque dark scalp under the cards: inside the hairline no skin shows through partings.
+        _ = t
+        m.baseColor = .init(tint: .init(linear: color * 0.55))
+        m.roughness = 0.7
         return m
     }
 

@@ -52,6 +52,24 @@ public enum GarmentFabrics {
             $0.colorA = linear(0x1E1B1A); $0.colorB = linear(0x0B0A0A); $0.colorC = linear(0x3A3632)
             $0.knobs = V4(110, 0.3, 0.42, 0.25); $0.seed = 109; $0.tileSize = 0.18; $0.normalStrength = 1.2; $0.roughness = 0.42; $0.twoSided = true
         },
+        // Basketball jersey and shorts: open polyester mesh with a soft sheen.
+        MaterialSpec(key: "garment.mesh", program: .fabricWeave).with {
+            $0.colorA = linear(0x1D428A); $0.colorB = linear(0x1D428A, 0); $0.colorC = linear(0x101010, 0.03)
+            $0.knobs = V4(24, 0.08, 0.82, 0); $0.seed = 111; $0.tileSize = 0.01; $0.normalStrength = 0.7; $0.roughness = 0.82; $0.specular = 0.25; $0.twoSided = true
+        },
+        // Shoe upper: smooth synthetic mesh.
+        MaterialSpec(key: "garment.synthetic", program: .fabricWeave).with {
+            $0.colorA = linear(0xF2F2F2); $0.colorB = linear(0xF2F2F2, 0); $0.colorC = linear(0x101010, 0.02)
+            $0.knobs = V4(60, 0.02, 0.55, 0); $0.seed = 112; $0.tileSize = 0.008; $0.normalStrength = 0.5; $0.roughness = 0.55; $0.specular = 0.35; $0.twoSided = true
+        },
+        // Shoe sole: solid rubber.
+        MaterialSpec(key: "garment.rubber", program: nil).with {
+            $0.baseColor = V3(0.9, 0.9, 0.9); $0.roughness = 0.6; $0.twoSided = true
+        },
+        // Heat-pressed lettering: flat vinyl.
+        MaterialSpec(key: "print", program: nil).with {
+            $0.baseColor = V3(0.9, 0.9, 0.9); $0.roughness = 0.42; $0.twoSided = true
+        },
         // Sneaker canvas / rubber upper.
         MaterialSpec(key: "garment.canvas", program: .fabricWeave).with {
             $0.colorA = linear(0xEDEBE6); $0.colorB = linear(0xDCD8D0, 0.2); $0.colorC = linear(0x505050, 0.05)
@@ -113,7 +131,31 @@ public enum Wardrobe {
     public static let gloves = Garment(id: "gloves", name: "Gloves", layer: 3, coverage: .init().with { $0.hands = true }, material: "garment.leather")
         .with { $0.offset = 0.0015; $0.folds = 0.0008; $0.hem = 0.002; $0.drape = 0 }
 
-    public static let all: [Garment] = [tshirt, longSleeve, tank, shirt, sweater, jacket, leatherJacket, coat, jeans, chinos, shorts, leggings, skirt, dress, briefs, sneakers, boots, socks, gloves]
+    /// Basketball jersey: wide armholes, scooped neck, trim bands. Layer 2 so it hangs over the shorts.
+    public static let jersey = Garment(id: "jersey", name: "Basketball jersey", layer: 2, coverage: .init().with { $0.torso = true; $0.torsoBottom = 0.6 }, material: "garment.mesh")
+        .with {
+            $0.cut = Garment.Cut(kind: .sleeveless)
+            $0.offset = 0.05; $0.flare = 0.03; $0.folds = 0.003; $0.hem = 0.004; $0.drape = 70; $0.trimWidth = 0.022
+        }
+    /// Basketball shorts: wide legs to the knee over a waistband.
+    public static let hoopShorts = Garment(id: "hoop-shorts", name: "Basketball shorts", layer: 1, coverage: .init().with { $0.pelvis = true; $0.rise = 1; $0.legs = 1.0 }, material: "garment.mesh")
+        .with {
+            $0.cut = Garment.Cut(kind: .shorts)
+            $0.offset = 0.03; $0.flare = 0.06; $0.folds = 0.004; $0.hem = 0.004; $0.drape = 40
+        }
+
+    /// High-top basketball shoes with a rubber sole band.
+    public static let hoopShoes = sneakers.with {
+        $0.id = "hoop-shoes"; $0.name = "Basketball shoes"; $0.material = "garment.synthetic"; $0.sole = "garment.rubber"
+        $0.coverage.ankle = 0.12; $0.offset = 0.012; $0.cut = Garment.Cut(kind: .shoe)
+    }
+    /// Crew socks to mid-calf.
+    public static let crewSocks = socks.with {
+        $0.id = "crew-socks"; $0.name = "Crew socks"; $0.material = "garment.jersey:F2F2F2"; $0.coverage.feet = 1.5; $0.coverage.ankle = 0.27
+        $0.cut = Garment.Cut(kind: .sock); $0.offset = 0.004; $0.folds = 0.001; $0.drape = 0; $0.trimWidth = 0.03
+    }
+
+    public static let all: [Garment] = [tshirt, longSleeve, tank, shirt, sweater, jacket, leatherJacket, coat, jeans, chinos, shorts, leggings, skirt, dress, briefs, sneakers, boots, socks, gloves, jersey, hoopShorts, hoopShoes, crewSocks]
     public static func garment(_ id: String) -> Garment? { all.first { $0.id == id } }
 }
 
@@ -133,5 +175,34 @@ public struct Outfit: Codable, Sendable, Hashable {
     public static let summerDress = Outfit([Wardrobe.dress, Wardrobe.sneakers])
     public static let athletic = Outfit([Wardrobe.tank.colored(0x1F5FA8), Wardrobe.leggings, Wardrobe.sneakers])
     public static let biker = Outfit([Wardrobe.tshirt.colored(0x1C1C1C), Wardrobe.leatherJacket, Wardrobe.jeans.colored(0x23252B), Wardrobe.boots])
+    /// Basketball uniform: jersey with trim, printed wordmark, number and name, shorts, shoes.
+    public static func basketball(primary: UInt32, secondary: UInt32, number: Int, wordmark: String, name: String, shoes: UInt32 = 0xF2F2F2) -> Outfit {
+        func dark(_ c: UInt32, _ k: Float) -> UInt32 {
+            let r = Float((c >> 16) & 255) * k, g = Float((c >> 8) & 255) * k, b = Float(c & 255) * k
+            return (UInt32(r) << 16) | (UInt32(g) << 8) | UInt32(b)
+        }
+        let n = String(number)
+        let jersey = Wardrobe.jersey.colored(primary).with {
+            $0.trim = "garment.mesh:" + String(format: "%06X", secondary)
+            $0.emblems = [
+                Garment.Emblem(wordmark.uppercased(), side: .front, color: secondary, height: 0.042, drop: 0.165).with { $0.maxWidth = 0.17 },
+                Garment.Emblem(n, side: .front, color: secondary, shadow: dark(primary, 0.5), height: 0.1, drop: 0.265).with { $0.maxWidth = 0.14 },
+                Garment.Emblem(name.uppercased(), side: .back, color: secondary, height: 0.032, drop: 0.015).with { $0.maxWidth = 0.2 },
+                Garment.Emblem(n, side: .back, color: secondary, shadow: dark(primary, 0.5), height: 0.15, drop: 0.16).with { $0.maxWidth = 0.17 },
+            ]
+        }
+        let shorts = Wardrobe.hoopShorts.colored(primary)
+        let shoe = Wardrobe.hoopShoes.with {
+            $0.material = "garment.synthetic:" + String(format: "%06X", shoes)
+            $0.sole = "garment.rubber:" + String(format: "%06X", 0x1E1E1E)
+            $0.trim = "garment.synthetic:" + String(format: "%06X", secondary)
+        }
+        let socks = Wardrobe.crewSocks.with { $0.trim = "garment.jersey:" + String(format: "%06X", primary) }
+        return Outfit([jersey, shorts, socks, shoe])
+    }
     public static let presets: [String: Outfit] = ["casual": casual, "smart": smart, "winter": winter, "outdoor": outdoor, "dress": summerDress, "athletic": athletic, "biker": biker]
+}
+
+public extension Garment.Emblem {
+    func with(_ e: (inout Garment.Emblem) -> Void) -> Garment.Emblem { var c = self; e(&c); return c }
 }
