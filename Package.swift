@@ -2,10 +2,10 @@
 import PackageDescription
 import Foundation
 
-// Local RealityHD checkout next to this one (../RealForge) when present, else the published package.
-let localRealityHD = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../RealForge/Package.swift").path
+// Local RealityHD checkout next to this one (../RealityHD) when present, else the published package.
+let localRealityHD = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../RealityHD/Package.swift").path
 let realityHD: Package.Dependency = FileManager.default.fileExists(atPath: localRealityHD)
-    ? .package(name: "RealityHD", path: "../RealForge")
+    ? .package(name: "RealityHD", path: "../RealityHD")
     : .package(url: "https://github.com/hunterh37/RealityHD.git", branch: "main")
 
 let package = Package(

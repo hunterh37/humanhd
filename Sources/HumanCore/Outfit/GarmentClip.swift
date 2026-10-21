@@ -90,7 +90,7 @@ extension GarmentFitter {
                 let sHem = p.y - shortsHem
                 var f0 = min(sTop, sHem)
                 if masked { f0 = min(f0, -0.02) }
-                return (f0, big, min(1, max(0, sHem / 0.25)))
+                return (f0, min(sTop, g.cut.trimHem ? sHem : big), min(1, max(0, sHem / 0.25)))
             }
         }
     }

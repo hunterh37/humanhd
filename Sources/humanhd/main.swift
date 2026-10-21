@@ -74,6 +74,10 @@ func run() async throws {
         try await renderCommand(args)
     case "hoops":
         try await hoopsCommand(args)
+    case "mods":
+        for k in HM08.shared.modifiers.keys.sorted() where args.isEmpty || args.contains(where: { k.contains($0) }) { print(k) }
+    case "boxer":
+        try await boxerCommand(args)
     case "gate":
         hoopsGate(args)
     default:
