@@ -22,8 +22,9 @@ func hoopsSpec(_ args: [String]) -> HumanSpec {
                 shape.modifiers["armslegs/\(side)-\(k)-decr|incr"] = v
             }
         }
-        for (k, v) in [("torso/torso-vshape-decr|incr", 0.5), ("torso/torso-muscle-pectoral-decr|incr", 0.15), ("torso/torso-muscle-dorsi-decr|incr", 0.6),
-                       ("torso/torso-scale-horiz-decr|incr", 0.2), ("neck/neck-scale-horiz-decr|incr", 0.5), ("neck/neck-scale-depth-decr|incr", 0.3), ("neck/neck-scale-vert-decr|incr", -0.35)] as [(String, Float)] {
+        for (k, v) in [("torso/torso-vshape-decr|incr", 0.5), ("torso/torso-muscle-dorsi-decr|incr", 0.6),
+                       ("torso/torso-scale-horiz-decr|incr", 0.2), ("neck/neck-scale-horiz-decr|incr", 0.5), ("neck/neck-scale-depth-decr|incr", 0.3), ("neck/neck-scale-vert-decr|incr", -0.35),
+                       ("hip/hip-scale-horiz-decr|incr", -0.35), ("measure/measure-shoulder-dist-decr|incr", 0.3), ("torso/torso-muscle-pectoral-decr|incr", 0.05)] as [(String, Float)] {
             shape.modifiers[k] = v
         }
     }

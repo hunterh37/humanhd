@@ -93,14 +93,14 @@ public enum SkinMaterial {
         let microBody = g.input("float", "MicroScaleBody", "180")
         let microFace = g.input("float", "MicroScaleFace", "52")
         let microStrength = g.input("float", "MicroStrength", "0.12")
-        let roughScale = g.input("float", "RoughnessScale", "1")
+        let roughScale = g.input("float", "RoughnessScale", "1.08")
         let oil = g.input("float", "Oiliness", "0.6")
-        let specBase = g.input("float", "Specular", "0.36")
+        let specBase = g.input("float", "Specular", "0.3")
         let sunDir = g.input("float3", "SunDirection", "(0, -1, 0)")
-        let scatter = g.input("float3", "ScatterColor", "(1.0, 0.32, 0.18)")
+        let scatter = g.input("float3", "ScatterColor", "(1.0, 0.38, 0.24)")
         let transmission = g.input("float", "Transmission", "1.2")
         let creaseDarken = g.input("float", "CreaseDarken", "0.3")
-        let ambientScatter = g.input("float", "AmbientScatter", "0.035")
+        let ambientScatter = g.input("float", "AmbientScatter", "0.055")
 
         let uv0 = g.texcoord(0), uv1 = g.texcoord(1)
         let fw = g.xy(g.texcoord(3))[0]
@@ -126,10 +126,12 @@ public enum SkinMaterial {
         let (mx, my) = g.unpackNormal(mx01, my01)
         let ms = g.mul(microStrength, g.sub("1", hair))
         let normal = g.normalFromXY(g.add(nx, g.mul(mx, ms)), g.add(ny, g.mul(my, ms)))
-        let rough = g.clamp01(g.mul(P[0], roughScale))
+        // Roughness varies with the micro tile (pore floors rougher than ridges) so highlights break up.
+        let mz = g.mix(mb[2], mf[2], fw)
+        let rough = g.clamp01(g.mul(g.mul(P[0], roughScale), g.add("0.9", g.mul(mz, "0.2"))))
         let ao = g.mul(P[1], creaseAO)
         let spec = g.mul(specBase, g.add("0.7", g.mul(P[3], "0.6")))
-        let coat = g.mul(g.node("ND_smoothstep_float", [("float", "in", P[3]), ("float", "low", "0.7"), ("float", "high", "0.95")], out: "float"), oil)
+        let coat = g.mul(g.node("ND_smoothstep_float", [("float", "in", P[3]), ("float", "low", "0.78"), ("float", "high", "0.95")], out: "float"), oil)
         // Transmission: thin tissue glows red when the sun is behind it.
         let wp = g.node("ND_position_vector3", [("string", "space", "\"world\"")], out: "float3")
         let cam = g.node("ND_realitykit_cameraposition_vector3", [], out: "float3")
@@ -141,7 +143,7 @@ public enum SkinMaterial {
         let surface = g.node("ND_realitykit_pbr_surfaceshader", [
             ("color3f", "baseColor", g.toColor(color)), ("float3", "normal", normal), ("float", "roughness", rough),
             ("float", "ambientOcclusion", ao), ("float", "specular", spec), ("float", "metallic", "0"),
-            ("float", "clearcoat", coat), ("float", "clearcoatRoughness", "0.28"),
+            ("float", "clearcoat", coat), ("float", "clearcoatRoughness", "0.36"),
             ("color3f", "emissiveColor", g.toColor(emissive)), ("bool", "hasPremultipliedAlpha", "0"),
         ], out: "token")
         return g.document(surface: surface)

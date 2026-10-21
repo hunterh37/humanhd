@@ -17,17 +17,18 @@ public enum BoxerLook {
             }
         }
         for (k, v) in [("torso/torso-vshape-decr|incr", 1), ("torso/torso-muscle-pectoral-decr|incr", 1), ("torso/torso-muscle-dorsi-decr|incr", 0.7),
-                       ("stomach/stomach-tone-decr|incr", 1), ("neck/neck-scale-horiz-decr|incr", 0.45), ("neck/neck-scale-vert-decr|incr", -0.25)] as [(String, Float)] {
+                       ("stomach/stomach-tone-decr|incr", 1), ("neck/neck-scale-horiz-decr|incr", 0.45), ("neck/neck-scale-vert-decr|incr", -0.25),
+                       ("hip/hip-scale-horiz-decr|incr", -0.3), ("measure/measure-shoulder-dist-decr|incr", 0.35), ("head/head-scale-horiz-decr|incr", -0.08)] as [(String, Float)] {
             shape.modifiers[k] = v
         }
         shape.african = 0.15; shape.asian = 0.05; shape.caucasian = 0.8
         var look = Appearance()
         look.detail = SkinDetail.matching(shape, seed: seed).with { $0.stubble = 0.12; $0.bodyHair = 0; $0.sunExposure = 0.6; $0.moles = 0.6; $0.pores = 1.2 }
-        look.skin = SkinTone(tone: 0.38, undertone: 0.35, flush: 0.75)
+        look.skin = SkinTone(tone: 0.38, undertone: 0.35, flush: 0.62)
         look.eyes = EyeLook.hazel.with { $0.scleraRedness = 0.3 }
         look.hairColor = LinearColor(hex: 0x16100C)
         var spec = HumanSpec()
-        spec.shape = shape; spec.appearance = look; spec.hair = HairStyle.crop.with { $0.fringe = 0.85; $0.density = 22; $0.length = 0.03; $0.volume = 0.009 }; spec.subdivision = 0
+        spec.shape = shape; spec.appearance = look; spec.hair = HairStyle.crop.with { $0.fringe = 0.85; $0.density = 30; $0.length = 0.03; $0.volume = 0.008; $0.cardWidth = 0.011 }; spec.subdivision = 0
         let shorts = Wardrobe.hoopShorts.colored(trunks).with {
             $0.id = "trunks"; $0.name = "Boxing trunks"; $0.material = "garment.nylon:" + String(format: "%06X", trunks)
             $0.trim = "garment.nylon:" + String(format: "%06X", trim)
@@ -52,9 +53,9 @@ public enum BoxerLook {
         guard var mats = ch.entity.model?.materials else { return }
         for i in mats.indices {
             guard var m = mats[i] as? ShaderGraphMaterial, m.parameterNames.contains("Oiliness") else { continue }
-            try? m.setParameter(name: "RoughnessScale", value: .float(1 - 0.5 * amount))
-            try? m.setParameter(name: "Specular", value: .float(0.36 + 0.3 * amount))
-            try? m.setParameter(name: "Oiliness", value: .float(1))
+            try? m.setParameter(name: "RoughnessScale", value: .float(1.08 - 0.42 * amount))
+            try? m.setParameter(name: "Specular", value: .float(0.3 + 0.2 * amount))
+            try? m.setParameter(name: "Oiliness", value: .float(0.5 + 0.5 * amount))
             mats[i] = m
         }
         ch.setMaterials(mats)

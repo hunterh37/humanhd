@@ -54,6 +54,23 @@ material and lighting layers.
   staggered frame skipping for distant characters, culling, texture sets shared across characters,
   no files besides one 3.2 MB compressed asset blob.
 
+## Presets
+
+Outfit presets (`Outfit.presets`): casual, smart, winter, outdoor, dress, athletic, biker, plus
+`Outfit.basketball(primary:secondary:number:wordmark:name:)`. Hair presets (`HairStyle.presets`):
+bald, buzz, short, crop, bob, long, wavy, ponytail, bun, curly. Body presets: `BodyShape.averageFemale`,
+`BodyShape.averageMale` and `HumanSpec.random(seed:)`. Character looks: `BoxerLook.spec(trunks:trim:seed:)`
+with `glisten`, `applyGuard` and `makeGlove`, and the basketball player built by `humanhd hoops`.
+
+Realism pass (October 2026). Skin is less glossy by default: specular 0.3, roughness scale 1.08,
+roughness modulated per pore by the micro detail tile so highlights break up, the clearcoat oil layer
+limited to the oiliest zones with a rougher coat, and a warmer subsurface floor in shadow. Boxer and
+basketball bodies use athletic ratios: narrower hips and a wider shoulder span; the boxer also has a
+slightly narrower head, lower flush and denser crop hair. `BoxerLook.glisten` reads as sweat without
+turning the skin plastic. The short hair preset is denser. Basketball jersey and shorts sit closer to
+the body with deeper folds, and basketball shoes are less bulky. Before and after renders are made with
+`humanhd hoops`, `humanhd boxer` and `humanhd look` into out/realism/.
+
 ## Requirements
 
 visionOS 26, iOS 26 or macOS 26; Xcode 26 (Swift 6.2 tools); Metal.

@@ -81,7 +81,7 @@ public final class SkinPainter: @unchecked Sendable {
         let nd = MTLDepthStencilDescriptor(); nd.depthCompareFunction = .always; nd.isDepthWriteEnabled = false
         noDepth = device.makeDepthStencilState(descriptor: nd)!
         let (bv, bi, fi) = Self.paintVertices()
-        func buf<T>(_ a: [T]) throws -> MTLBuffer {
+        func buf<T: BitwiseCopyable>(_ a: [T]) throws -> MTLBuffer {
             guard let b = device.makeBuffer(bytes: a, length: max(16, a.count * MemoryLayout<T>.stride), options: .storageModeShared) else { throw PainterError.metal("buffer") }
             return b
         }

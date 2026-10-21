@@ -22,7 +22,7 @@ import RealCore
 }
 
 /// Critically damped spring (SmoothDamp): `halfLife` seconds to cover half the distance.
-public struct Spring<T: SIMD>: Sendable where T.Scalar == Float {
+public struct Spring<T: SIMD>: Sendable where T: Sendable, T.Scalar == Float {
     public var value: T
     public var velocity: T = .zero
     public init(_ v: T) { value = v }

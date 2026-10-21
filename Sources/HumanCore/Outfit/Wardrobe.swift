@@ -135,19 +135,19 @@ public enum Wardrobe {
     public static let jersey = Garment(id: "jersey", name: "Basketball jersey", layer: 2, coverage: .init().with { $0.torso = true; $0.torsoBottom = 0.6 }, material: "garment.mesh")
         .with {
             $0.cut = Garment.Cut(kind: .sleeveless)
-            $0.offset = 0.05; $0.flare = 0.03; $0.folds = 0.003; $0.hem = 0.004; $0.drape = 70; $0.trimWidth = 0.022
+            $0.offset = 0.034; $0.flare = 0.026; $0.folds = 0.005; $0.hem = 0.004; $0.drape = 70; $0.trimWidth = 0.022
         }
     /// Basketball shorts: wide legs to the knee over a waistband.
     public static let hoopShorts = Garment(id: "hoop-shorts", name: "Basketball shorts", layer: 1, coverage: .init().with { $0.pelvis = true; $0.rise = 1; $0.legs = 1.0 }, material: "garment.mesh")
         .with {
             $0.cut = Garment.Cut(kind: .shorts)
-            $0.offset = 0.03; $0.flare = 0.06; $0.folds = 0.004; $0.hem = 0.004; $0.drape = 40
+            $0.offset = 0.026; $0.flare = 0.055; $0.folds = 0.006; $0.hem = 0.004; $0.drape = 40
         }
 
     /// High-top basketball shoes with a rubber sole band.
     public static let hoopShoes = sneakers.with {
         $0.id = "hoop-shoes"; $0.name = "Basketball shoes"; $0.material = "garment.synthetic"; $0.sole = "garment.rubber"
-        $0.coverage.ankle = 0.12; $0.offset = 0.012; $0.cut = Garment.Cut(kind: .shoe)
+        $0.coverage.ankle = 0.12; $0.offset = 0.01; $0.cut = Garment.Cut(kind: .shoe)
     }
     /// Crew socks to mid-calf.
     public static let crewSocks = socks.with {

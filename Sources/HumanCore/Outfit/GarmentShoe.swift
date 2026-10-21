@@ -70,7 +70,6 @@ extension GarmentFitter {
             var w2 = env.map(\.w), t2 = env.map(\.top)
             for k in 0..<N { for d in -2...2 where (0..<N).contains(k + d) { w2[k] = max(w2[k], env[k + d].w); t2[k] = max(t2[k], env[k + d].top) } }
 
-            let ringCount = 37
             // Ring layout (right rim ... sole ... bottom center ... sole ... left rim).
             let armPts = 8, wallPts = 3
             func ring(_ k: Int, u: Float, lift: Float = 0) -> [V3] {

@@ -29,7 +29,7 @@ public struct HairStyle: Codable, Sendable, Hashable {
 
     public static let bald = HairStyle(.bald, length: 0)
     public static let buzz = HairStyle(.buzz, length: 0.004)
-    public static let short = HairStyle(.short, length: 0.06).with { $0.volume = 0.01; $0.density = 14; $0.cardWidth = 0.012 }
+    public static let short = HairStyle(.short, length: 0.06).with { $0.volume = 0.01; $0.density = 18; $0.cardWidth = 0.012 }
     public static let crop = HairStyle(.crop, length: 0.035).with { $0.volume = 0.007; $0.density = 16; $0.cardWidth = 0.01; $0.fringe = 0.4 }
     public static let bob = HairStyle(.bob, length: 0.2).with { $0.volume = 0.016; $0.density = 13; $0.part = 0.25 }
     public static let long = HairStyle(.long, length: 0.42).with { $0.volume = 0.014; $0.density = 13; $0.part = 0.3 }
