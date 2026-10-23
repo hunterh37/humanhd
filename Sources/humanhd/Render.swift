@@ -265,13 +265,24 @@ func lookCommand(_ args: [String]) async throws {
     var t: Float = 0
     while t < 1.2 { HumanSkinning.run([ch], dt: 1.0 / 60, wait: t > 1.1); t += 1.0 / 60 }
     let az = (Float(args.first(where: { $0.hasPrefix("az=") })?.dropFirst(3) ?? "25") ?? 25) * .pi / 180
+    let out = args.first(where: { $0.hasSuffix(".png") }) ?? "out/look.png"
+    if args.contains("lower") {
+        // Waist to floor, az 20 and az 90, 1024 px square.
+        let focus = V3(0, 0.52, 0)
+        for (deg, path) in [(Float(20), out), (90, out.replacingOccurrences(of: ".png", with: "-90.png"))] {
+            let a = deg * .pi / 180
+            preview.look(from: focus + V3(sin(a) * 1.75, 0.05, cos(a) * 1.75), at: focus, fov: 40)
+            guard let img = try await preview.render(width: 1024, height: 1024, frames: 6) else { return }
+            writePNG(img, path); print(path)
+        }
+        return
+    }
     let face = args.contains("face")
     let h = ch.body.skeleton.bones[ch.body.skeleton["head"]!].head.y
     let focus = face ? V3(0, h + 0.05, 0.05) : V3(0, 0.88, 0)
     let dist: Float = face ? 0.65 : 3.1
     preview.look(from: focus + V3(sin(az) * dist, face ? 0.02 : 0.08, cos(az) * dist), at: focus, fov: 40)
     guard let img = try await preview.render(width: 900, height: 1200, frames: 6) else { return }
-    let out = args.first(where: { $0.hasSuffix(".png") }) ?? "out/look.png"
     writePNG(img, out)
     print(out, "build", Int(build * 1000), "ms tris", ch.mesh.triangleCount, "verts", ch.mesh.vertexCount)
 }

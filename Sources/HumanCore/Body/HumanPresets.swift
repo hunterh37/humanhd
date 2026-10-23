@@ -19,7 +19,7 @@ public enum HumanPresets {
         $0.appearance.eyes = .darkBrown
         $0.appearance.hairColor = LinearColor(hex: 0x0C0A09)
         $0.hair = .buzz
-        $0.outfit = Outfit([Wardrobe.tshirt.colored(0xB98A80), Wardrobe.joggers, Wardrobe.sneakers.colored(0xEDEDED), Wardrobe.cap])
+        $0.outfit = Outfit([Wardrobe.tshirt.colored(0xB98A80), Wardrobe.joggers, Wardrobe.lowSneakers.colored(0xEDEDED), Wardrobe.cap])
     }
     public static let studio = HumanSpec().with {
         $0.shape = BodyShape.averageFemale.with { $0.age = 24; $0.weight = 0.4; $0.caucasian = 1; $0.african = 0; $0.asian = 0 }
@@ -28,7 +28,7 @@ public enum HumanPresets {
         $0.appearance.eyes = .hazel
         $0.appearance.hairColor = LinearColor(hex: 0x6A4A30)
         $0.hair = .long; $0.hair.seed = 7
-        $0.outfit = Outfit([Wardrobe.tshirt.colored(0x151517), Wardrobe.jeans.colored(0x3A4255), Wardrobe.sneakers, Wardrobe.beanie.colored(0x4A4A4E)])
+        $0.outfit = Outfit([Wardrobe.tshirt.colored(0x151517), Wardrobe.jeans.colored(0x3A4255), Wardrobe.lowSneakers, Wardrobe.beanie.colored(0x4A4A4E)])
     }
     public static let brim = HumanSpec().with {
         $0.shape = BodyShape.averageFemale.with { $0.age = 26; $0.weight = 0.38; $0.caucasian = 0.7; $0.asian = 0.1; $0.african = 0 }
@@ -46,7 +46,7 @@ public enum HumanPresets {
         $0.appearance.eyes = .brown
         $0.appearance.hairColor = LinearColor(hex: 0x0C0A09)
         $0.hair = .crop; $0.hair.seed = 11
-        $0.outfit = Outfit([Wardrobe.shirt.colored(0xC9C2B4), Wardrobe.chinos.colored(0x5A5040), Wardrobe.sneakers.colored(0x2A2A2A), Wardrobe.cap.colored(0x2C3A55)])
+        $0.outfit = Outfit([Wardrobe.shirt.colored(0xC9C2B4), Wardrobe.chinos.colored(0x5A5040), Wardrobe.lowSneakers.colored(0x2A2A2A), Wardrobe.cap.colored(0x2C3A55)])
     }
     public static let all: [String: HumanSpec] = ["woodsman": woodsman, "street": street, "studio": studio, "brim": brim, "campus": campus]
 }

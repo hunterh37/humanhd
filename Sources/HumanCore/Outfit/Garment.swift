@@ -37,6 +37,9 @@ public struct Garment: Codable, Sendable, Hashable, Identifiable {
     /// Shoes: separate sole material for triangles below `soleHeight` (m).
     public var sole: String? = nil
     public var soleHeight: Float = 0.026
+    /// Lofted shoes: lace material (nil = slip-on, no laces) and welt standoff of the sole band (m).
+    public var laces: String? = "garment.synthetic:BDBDBD"
+    public var welt: Float = 0
     /// Hats: crown and brim shape (fitted by `GarmentFitter.fitHat`).
     public var hat: HatShape? = nil
 
@@ -45,7 +48,7 @@ public struct Garment: Codable, Sendable, Hashable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, layer, coverage, offset, flare, folds, material, hem, hidesBody, drape, trim, trimWidth, cut, emblems, sole, soleHeight, hat
+        case id, name, layer, coverage, offset, flare, folds, material, hem, hidesBody, drape, trim, trimWidth, cut, emblems, sole, soleHeight, hat, laces, welt
     }
 
     /// Tolerant decoding: fields added after a payload was written fall back to defaults.
@@ -66,6 +69,8 @@ public struct Garment: Codable, Sendable, Hashable, Identifiable {
         sole = try c.decodeIfPresent(String.self, forKey: .sole)
         if let v = try c.decodeIfPresent(Float.self, forKey: .soleHeight) { soleHeight = v }
         hat = try c.decodeIfPresent(HatShape.self, forKey: .hat)
+        if c.contains(.laces) { laces = try c.decodeIfPresent(String.self, forKey: .laces) }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .welt) { welt = v }
     }
 
     /// Smooth cut lines for sleeveless tops and shorts, in canonical-body meters. The cloth boundary
@@ -373,7 +378,13 @@ public enum GarmentFitter {
             let fold = (Noise.perlin(V3(c.x * 9, c.y * 38, c.z * 9), seed: seed) * 0.7 + Noise.perlin(c * 60, seed: seed &+ 1) * 0.3) * g.folds
             let off = g.offset + layerOffset + g.flare * (1 - hemT[v]) * (1 - hemT[v])
             m.positions.append(p + nrm * off)
-            foldAmount.append(max(-g.offset * 0.6, fold))
+            // Trouser break: horizontal stacking folds bunching over the last few cm above the hem.
+            var stack: Float = 0
+            if g.coverage.legs > 1.5 && hemT[v] < 0.3 {
+                let k = 1 - hemT[v] / 0.3
+                stack = k * k * g.folds * 2.2 * (0.55 + 0.45 * sin(c.y * 150 + Noise.perlin(V3(c.x * 20, c.y * 4, c.z * 20), seed: seed &+ 2) * 4))
+            }
+            foldAmount.append(max(-g.offset * 0.6, fold + stack))
             minOff.append(off * 0.7)
             m.normals.append(nrm)
             m.tangents.append(src.tangents[v])

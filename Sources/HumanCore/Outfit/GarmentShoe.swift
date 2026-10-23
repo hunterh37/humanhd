@@ -82,7 +82,7 @@ extension GarmentFitter {
                 let halfW = max(wMax * plan, w2[kk] + 0.009) * heelR * toeR
                 let spring = 0.026 * pow(smoothstep(0.76, 1, u), 1.6)
                 let yb = floorY + spring
-                let sTh = 0.027 - 0.006 * smoothstep(0.5, 0.9, u)
+                let sTh = 0.027 + g.welt * 1.5 - 0.006 * smoothstep(0.5, 0.9, u)
                 // Upper height: collar around the ankle, tongue slope, vamp, toe box.
                 let hInstep = floorY + 0.088, hToe = floorY + 0.056
                 var top = collarTop
@@ -91,7 +91,7 @@ extension GarmentFitter {
                 top = max(top, t2[kk] + 0.01)
                 let endTaper = (u < 0.06 ? pow(sqrt(max(0, 1 - pow((0.06 - u) / 0.06, 2))), 0.7) : 1) * (u > 0.8 ? pow(sqrt(max(0, 1 - pow((u - 0.8) / 0.2, 2))), 0.85) : 1)
                 let ytop = yb + sTh + (top - yb - sTh) * endTaper
-                let ws = halfW + 0.005
+                let ws = halfW + 0.005 + g.welt
                 // Opening half width where the leg passes through.
                 var gx: Float = 0
                 let dz = (z - legC.z) / opening.y
@@ -162,7 +162,7 @@ extension GarmentFitter {
                 }
             }
             // Laces: raised bars across the vamp between the collar and the toe box (arcs only: ring 0...7 and 27...34).
-            for q in 0..<7 {
+            for q in 0..<(g.laces == nil ? 0 : 7) {
                 let uc = uFront + 0.05 + Float(q) * 0.05
                 let a = ring(0, u: uc - 0.007), b = ring(0, u: uc + 0.007)
                 for (j0, j1) in [(0, 7), (27, 34)] {
@@ -184,7 +184,7 @@ extension GarmentFitter {
         m.parts = [SkinnedMesh.Part(slot: .garment, material: g.material, indices: upper)]
         if let s = g.sole { m.parts.append(SkinnedMesh.Part(slot: .garment, material: s, indices: sole)) } else { m.parts[0].indices += sole }
         if let t = g.trim { m.parts.append(SkinnedMesh.Part(slot: .garment, material: t, indices: trim)) } else { m.parts[0].indices += trim }
-        m.parts.append(SkinnedMesh.Part(slot: .garment, material: "garment.synthetic:BDBDBD", indices: lace))
+        if let l = g.laces { m.parts.append(SkinnedMesh.Part(slot: .garment, material: l, indices: lace)) }
         m.computeFrames(weld: true)
         return FittedGarment(garment: g, mesh: m, hidden: hidden, source: Array(repeating: -1, count: m.positions.count), chains: [])
     }

@@ -20,3 +20,14 @@ Iteration 1: cap visor wrapped the sides, curly hair cards outside the cap, brim
 Iteration 2: visor limited to the front 120 degrees, hair cull margin 8 cm, brim crown lowered, morning sky, smile on brim. min 0.515 mean 0.589.
 Iteration 3: visor column order fixed (center gap), campus hair crop. min 0.515 mean 0.590.
 Open: faces read as CG (no beard volume, flat skin micro-shading, no hair on forehead under hats). Gate not met.
+
+## Lower-body gate (look lower, CLIP ViT-L/14 vs out/refs-lower, CC0 Unsplash via Commons)
+
+| iter | woodsman | street | studio | brim | campus | min | mean | change |
+|---|---|---|---|---|---|---|---|---|
+| 0 | 0.595 | 0.648 | 0.694 | 0.685 | 0.625 | 0.595 | 0.650 | baseline: skin-grown shoe lasts, tight trousers |
+| 1 | 0.594 | 0.646 | 0.699 | 0.702 | 0.653 | 0.594 | 0.659 | lofted shoes (sole band, toe spring, laces, welt), looser trousers, hem stacking |
+| 2 | 0.602 | 0.646 | 0.699 | 0.700 | 0.653 | 0.602 | 0.660 | brown boot leather, taller shaft; plateau, stopped |
+
+0.85 not reached. Refs are tight shin/shoe crops; the waist-to-floor framing caps CLIP similarity.
+Open: denim seams/pockets/cuffs, sock band in the hem gap.
