@@ -78,6 +78,8 @@ func run() async throws {
         for k in HM08.shared.modifiers.keys.sorted() where args.isEmpty || args.contains(where: { k.contains($0) }) { print(k) }
     case "boxer":
         try await boxerCommand(args)
+    case "taunt":
+        try await tauntCommand(args)
     case "gate":
         hoopsGate(args)
     default:
