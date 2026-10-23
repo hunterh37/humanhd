@@ -155,7 +155,24 @@ public enum Wardrobe {
         $0.cut = Garment.Cut(kind: .sock); $0.offset = 0.004; $0.folds = 0.001; $0.drape = 0; $0.trimWidth = 0.03
     }
 
-    public static let all: [Garment] = [tshirt, longSleeve, tank, shirt, sweater, jacket, leatherJacket, coat, jeans, chinos, shorts, leggings, skirt, dress, briefs, sneakers, boots, socks, gloves, jersey, hoopShorts, hoopShoes, crewSocks]
+    // Hats: crown shells over the head hull (rigid to the head bone).
+    public static let beanie = Garment(id: "beanie", name: "Knit beanie", layer: 5, coverage: .init(), material: "garment.wool:2B2B2D").with {
+        $0.hat = HatShape(.beanie).with { $0.edgeFront = 0.045; $0.edgeBack = -0.03; $0.cuff = 0.045; $0.crown = 0.022 }
+        $0.offset = 0.011; $0.hidesBody = false
+    }
+    public static let cap = Garment(id: "cap", name: "Baseball cap", layer: 5, coverage: .init(), material: "garment.twill:22252C").with {
+        $0.hat = HatShape(.cap).with { $0.edgeFront = 0.052; $0.edgeBack = 0.0; $0.brim = 0.088; $0.crown = 0.004; $0.droop = 0.014 }
+        $0.offset = 0.009; $0.hidesBody = false
+    }
+    public static let wideBrim = Garment(id: "wide-brim", name: "Wide-brim hat", layer: 5, coverage: .init(), material: "garment.wool:1E1A18").with {
+        $0.hat = HatShape(.brim).with { $0.edgeFront = 0.05; $0.edgeBack = 0.0; $0.brim = 0.08; $0.crown = 0.012; $0.cuff = 0.018; $0.droop = 0.004 }
+        $0.offset = 0.012; $0.hidesBody = false; $0.trim = "garment.leather:121010"
+    }
+    public static let flannelShirt = shirt.with { $0.id = "flannel-shirt"; $0.name = "Flannel shirt"; $0.material = "garment.flannel:3A3F4A"; $0.offset = 0.008; $0.folds = 0.007; $0.drape = 12 }
+    public static let joggers = jeans.with { $0.id = "joggers"; $0.name = "Joggers"; $0.material = "garment.jersey:3A3B3F"; $0.coverage.legs = 1.9; $0.flare = 0.006; $0.folds = 0.008; $0.offset = 0.007 }
+    public static let chelseaBoots = boots.with { $0.id = "chelsea-boots"; $0.name = "Chelsea boots"; $0.material = "garment.leather:1A1614"; $0.coverage.feet = 1.6; $0.offset = 0.008 }
+
+    public static let all: [Garment] = [tshirt, longSleeve, tank, shirt, sweater, jacket, leatherJacket, coat, jeans, chinos, shorts, leggings, skirt, dress, briefs, sneakers, boots, socks, gloves, jersey, hoopShorts, hoopShoes, crewSocks, beanie, cap, wideBrim, flannelShirt, joggers, chelseaBoots]
     public static func garment(_ id: String) -> Garment? { all.first { $0.id == id } }
 }
 

@@ -37,13 +37,15 @@ public struct Garment: Codable, Sendable, Hashable, Identifiable {
     /// Shoes: separate sole material for triangles below `soleHeight` (m).
     public var sole: String? = nil
     public var soleHeight: Float = 0.026
+    /// Hats: crown and brim shape (fitted by `GarmentFitter.fitHat`).
+    public var hat: HatShape? = nil
 
     public init(id: String, name: String, layer: Int, coverage: Coverage, material: String) {
         self.id = id; self.name = name; self.layer = layer; self.coverage = coverage; self.material = material
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, layer, coverage, offset, flare, folds, material, hem, hidesBody, drape, trim, trimWidth, cut, emblems, sole, soleHeight
+        case id, name, layer, coverage, offset, flare, folds, material, hem, hidesBody, drape, trim, trimWidth, cut, emblems, sole, soleHeight, hat
     }
 
     /// Tolerant decoding: fields added after a payload was written fall back to defaults.
@@ -63,6 +65,7 @@ public struct Garment: Codable, Sendable, Hashable, Identifiable {
         if let v = try c.decodeIfPresent([Emblem].self, forKey: .emblems) { emblems = v }
         sole = try c.decodeIfPresent(String.self, forKey: .sole)
         if let v = try c.decodeIfPresent(Float.self, forKey: .soleHeight) { soleHeight = v }
+        hat = try c.decodeIfPresent(HatShape.self, forKey: .hat)
     }
 
     /// Smooth cut lines for sleeveless tops and shorts, in canonical-body meters. The cloth boundary
@@ -188,6 +191,8 @@ public struct FittedGarment: Sendable {
     public var source: [Int] = []
     /// Simulated chains (skirts). Mesh joints >= `chainMarker` refer to chain bones.
     public var chains: [ChainDef] = []
+    /// Hats: the space under the crown (hair inside it is culled).
+    public var hatVolume: HatVolume? = nil
 }
 
 /// Joint ids at or above this refer to simulated chain bones local to the mesh that created them.
@@ -324,6 +329,7 @@ public enum GarmentFitter {
 
     /// Fits a garment to a body (render mesh must be the body's own skinned mesh).
     public static func fit(_ g: Garment, body: HumanBody, layerOffset: Float = 0) -> FittedGarment {
+        if g.hat != nil { return fitHat(g, body: body, layerOffset: 0) }
         if g.cut.kind == .shoe { return fitShoe(g, body: body, layerOffset: layerOffset) }
         if g.cut.kind != .none { return fitClipped(g, body: body, layerOffset: layerOffset) }
         let level = body.topologyLevel

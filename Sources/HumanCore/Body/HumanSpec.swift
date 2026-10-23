@@ -123,7 +123,20 @@ public struct HumanModel: Sendable {
             chains += ch
             return p
         }
-        let (hair, hairChains) = HairBuilder.build(spec.hair, body: body)
+        var (hair, hairChains) = HairBuilder.build(spec.hair, body: body)
+        // Hair under a hat crown is culled (cards emerge below the edge).
+        let hats = fits.compactMap(\.hatVolume)
+        if !hats.isEmpty {
+            let under = hair.positions.map { p in hats.contains { $0.contains(p) } }
+            for pi in hair.parts.indices {
+                let idx = hair.parts[pi].indices
+                var kept: [UInt32] = []
+                for t in stride(from: 0, to: idx.count, by: 3) where !(under[Int(idx[t])] || under[Int(idx[t + 1])] || under[Int(idx[t + 2])]) {
+                    kept += [idx[t], idx[t + 1], idx[t + 2]]
+                }
+                hair.parts[pi].indices = kept
+            }
+        }
         m.append(relocate(hair, hairChains))
         m.append(relocate(clothes, clothChains))
         mesh = m

@@ -238,6 +238,7 @@ func lookCommand(_ args: [String]) async throws {
     }
     for (k, o) in Outfit.presets where args.contains(k) { spec.outfit = o }
     for (k, h) in HairStyle.presets where args.contains("hair=" + k) { spec.hair = h }
+    if let p = args.first(where: { $0.hasPrefix("preset=") })?.dropFirst(7), let s = HumanPresets.all[String(p)] { spec = s }
     if args.contains("nude") { spec.outfit = .none }
     if let hc = args.first(where: { $0.hasPrefix("haircolor=") })?.dropFirst(10), let v = UInt32(hc, radix: 16) { spec.appearance.hairColor = LinearColor(hex: v) }
     let t0 = Date()
@@ -253,7 +254,9 @@ func lookCommand(_ args: [String]) async throws {
     ch.animator?.rootMotion = false
     let build = Date().timeIntervalSince(t0)
     if args.contains("walk") { ch.animator?.core.speed = 1.3 }
-    let env = try RealEnvironment(SunSky.afternoon, skybox: true)
+    if let e = args.first(where: { $0.hasPrefix("expr=") })?.dropFirst(5), let ex = FacialExpression(rawValue: String(e)) { ch.animator?.core.expression = ex }
+    let sky: SunSky = ["morning": .morning, "midday": .midday, "golden": .goldenHour][String(args.first(where: { $0.hasPrefix("sky=") })?.dropFirst(4) ?? "")] ?? .afternoon
+    let env = try RealEnvironment(sky, skybox: true)
     let preview = try RealPreview(environment: env)
     let root = Entity(); root.addChild(ch.entity); env.illuminate(root); preview.add(root)
     var floor = Prim.terrain(size: V2(20, 20), segments: 4, material: "concrete.smooth") { _ in 0 }
