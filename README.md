@@ -71,6 +71,12 @@ turning the skin plastic. The short hair preset is denser. Basketball jersey and
 the body with deeper folds, and basketball shoes are less bulky. Before and after renders are made with
 `humanhd hoops`, `humanhd boxer` and `humanhd look` into out/realism/.
 
+## Boxer taunts
+
+`BoxerTaunt` (HumanKit) holds ten comedy taunts and dances for the boxer preset: `aliShuffle`, `boloWindmill`, `chickenWing`, `floss`, `sprinkler`, `bicepKiss`, `comeAtMe`, `cantHearYou`, `crybaby`, `discoPoint`. Each is a function of time: after the base animator plants the feet, `taunt.apply(&pose, skeleton:, anatomy:, t:)` writes legs, trunk, head and both arms. `taunt.duration` is one loop and `taunt.expression` is the matching face.
+
+`swift run humanhd taunt all sheet video` writes contact sheets (front 3/4 and side) and mp4s to `out/taunts/`.
+
 ## Requirements
 
 visionOS 26, iOS 26 or macOS 26; Xcode 26 (Swift 6.2 tools); Metal.
