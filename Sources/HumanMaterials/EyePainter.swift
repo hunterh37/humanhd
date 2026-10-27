@@ -8,7 +8,9 @@ import HumanCore
 /// Procedural eyeball texture: iris (radial stroma fibers, crypts, collarette, limbal ring, pupil)
 /// and sclera (warm white, vessels toward the corners), in `EyeModel` UV space.
 public final class EyePainter: @unchecked Sendable {
-    public static let shared: EyePainter? = try? EyePainter()
+    public static let shared: EyePainter? = {
+        do { return try EyePainter() } catch { FileHandle.standardError.write(Data("EyePainter init: \(error)\n".utf8)); return nil }
+    }()
     let device: MTLDevice
     public let queue: MTLCommandQueue
     let kernel: MTLComputePipelineState
@@ -16,7 +18,7 @@ public final class EyePainter: @unchecked Sendable {
     struct Params {
         var iris: SIMD4<Float>, irisInner: SIMD4<Float>
         var limbalRing: Float, pupil: Float, redness: Float, limbusUV: Float
-        var seed: UInt32, pad0: UInt32 = 0, pad1: UInt32 = 0, pad2: UInt32 = 0
+        var seed: UInt32, tint: Float = 0, pad1: UInt32 = 0, pad2: UInt32 = 0
     }
 
     init(device: MTLDevice? = TextureSynth.shared?.device ?? MTLCreateSystemDefaultDevice()) throws {
@@ -29,7 +31,7 @@ public final class EyePainter: @unchecked Sendable {
     /// Writes albedo (rgba8 sRGB), normal (rg8) and roughness (r8) into mipmapped targets.
     public func encode(_ e: EyeLook, albedo: MTLTexture, normal: MTLTexture, roughness: MTLTexture, commandBuffer cb: MTLCommandBuffer) {
         var p = Params(iris: SIMD4(e.iris, 1), irisInner: SIMD4(e.irisInner, 1), limbalRing: e.limbalRing, pupil: e.pupil,
-                       redness: e.scleraRedness, limbusUV: EyeModel.limbusUV, seed: e.seed)
+                       redness: e.scleraRedness, limbusUV: EyeModel.limbusUV, seed: e.seed, tint: e.scleraTint)
         guard let ce = cb.makeComputeCommandEncoder() else { return }
         ce.setComputePipelineState(kernel)
         func v(_ t: MTLTexture) -> MTLTexture { t.makeTextureView(pixelFormat: t.pixelFormat, textureType: .type2D, levels: 0..<1, slices: 0..<1) ?? t }
@@ -48,7 +50,7 @@ public final class EyePainter: @unchecked Sendable {
     static let source = #"""
     #include <metal_stdlib>
     using namespace metal;
-    struct Params { float4 iris; float4 irisInner; float limbalRing; float pupil; float redness; float limbusUV; uint seed; uint p0, p1, p2; };
+    struct Params { float4 iris; float4 irisInner; float limbalRing; float pupil; float redness; float limbusUV; uint seed; float tint; uint p1, p2; };
     inline uint pcg(uint v) { uint s = v * 747796405u + 2891336453u; uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return (w >> 22u) ^ w; }
     inline float h1(int2 c, uint s) { return float(pcg(uint(c.x) ^ pcg(uint(c.y) ^ pcg(s))) & 0xffffffu) / 16777216.0; }
     float vn(float2 p, uint s) {
@@ -88,21 +90,32 @@ public final class EyePainter: @unchecked Sendable {
             base = mix(base, base * 0.45, crypt);
             base = mix(base, P.irisInner.rgb * 1.3, collar * 0.45);
             // Limbal ring: darkening toward the limbus.
-            float limbal = smoothstep(0.8, 1.0, rho) * P.limbalRing;
-            base *= 1.0 - 0.75 * limbal;
+            float limbal = smoothstep(0.72, 0.97, rho) * P.limbalRing;
+            base *= 1.0 - 0.9 * limbal;
+            // Rim of the limbal ring: thin dark edge right at the limbus.
+            base *= 1.0 - 0.5 * P.limbalRing * smoothstep(0.93, 1.0, rho) * (1.0 - smoothstep(1.0, 1.04, rho));
             // Pupil (with a soft ruff).
             float pm = 1.0 - smoothstep(pupil - 0.015, pupil + 0.02, rho);
             col = mix(base, float3(0.004), pm);
             h = fibers * 0.4 + 0.3 * crypt * -1.0;
-            rg = 0.3;
+            rg = 0.07;
+            // Baked catchlights: a soft window up-left and a small fill low-right, over the iris and pupil.
+            float2 q = d / P.limbusUV;
+            float2 wq = (q - float2(-0.30, -0.30)) / float2(0.20, 0.14);
+            float win = (1.0 - smoothstep(0.7, 1.0, max(abs(wq.x), abs(wq.y)) * 0.95 + length(wq) * 0.12)) * smoothstep(1.0, 0.8, rho);
+            float fill = 1.0 - smoothstep(0.05, 0.12, length(q - float2(0.28, 0.32)));
+            col = mix(col, float3(0.95, 0.96, 1.0), saturate(win * 0.92 + fill * 0.55));
+            // Wet rim: bright thin meniscus just outside the limbal ring.
+            col += float3(0.05) * smoothstep(0.86, 0.96, rho) * (1.0 - smoothstep(0.96, 1.0, rho));
             // Blend into sclera across the limbus.
             float s = smoothstep(0.98, 1.06, rho);
-            float3 scl = float3(0.52, 0.47, 0.43);
-            col = mix(col, scl * 0.8, s);
+            float3 sclT = mix(float3(0.52, 0.47, 0.43), float3(0.46, 0.38, 0.28), P.tint);
+            col = mix(col, sclT * 0.8, s);
         } else {
             // Sclera: warm white, bluish under the limbus, vessels growing from the back.
             float back = smoothstep(0.18, 0.48, r);
-            float3 scl = mix(float3(0.52, 0.47, 0.43), float3(0.55, 0.42, 0.38), back * 0.6);
+            float3 scl0 = mix(float3(0.52, 0.47, 0.43), float3(0.46, 0.38, 0.28), P.tint);
+            float3 scl = mix(scl0, mix(float3(0.55, 0.42, 0.38), float3(0.44, 0.31, 0.22), P.tint), back * 0.6);
             float vessels = 0.0;
             for (int k = 0; k < 3; k++) {
                 float s = vnp(float2(a01 * (24.0 + k * 13.0), r * (18.0 + k * 9.0)), 24.0 + k * 13.0, P.seed + 20u + uint(k));
@@ -112,7 +125,9 @@ public final class EyePainter: @unchecked Sendable {
             col = mix(scl, float3(0.45, 0.07, 0.05), saturate(vessels));
             col *= 1.0 - 0.35 * smoothstep(0.22, 0.42, r);
             h = vessels * 0.3;
-            rg = 0.1;
+            rg = 0.09 + 0.1 * smoothstep(0.2, 0.45, r);
+            // Wet sclera sheen near the limbus.
+            col += float3(0.06, 0.06, 0.065) * exp(-pow((r - 0.24) / 0.035, 2.0));
         }
         albedo.write(float4(lin2srgb(saturate(col)), 1.0), gid);
         float hx = 0.0;

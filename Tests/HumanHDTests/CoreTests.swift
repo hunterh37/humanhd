@@ -139,3 +139,26 @@ final class DecimateTests: XCTestCase {
         XCTAssertEqual(low.joints.count, low.vertexCount)
     }
 }
+
+final class FaceTypeTests: XCTestCase {
+    func testEveryFaceTypeBuildsFinite() {
+        for ft in FaceType.all {
+            var spec = HumanSpec(); spec.subdivision = 0
+            ft.apply(to: &spec)
+            XCTAssertGreaterThan(spec.shape.modifiers.count, 5, ft.name)
+            let m = HumanModel(spec)
+            XCTAssertGreaterThan(m.mesh.triangleCount, 1000, ft.name)
+            for p in m.mesh.positions { XCTAssertTrue(p.x.isFinite && p.y.isFinite && p.z.isFinite, ft.name); if !(p.x.isFinite && p.y.isFinite && p.z.isFinite) { break } }
+            for n in m.mesh.normals { if !(n.x.isFinite && n.y.isFinite && n.z.isFinite) { XCTFail("normal NaN \(ft.name)"); break } }
+            let a = spec.appearance.skin.albedo
+            XCTAssertTrue(a.x.isFinite && a.y.isFinite && a.z.isFinite, ft.name)
+        }
+    }
+    func testNewHairKindsBuild() {
+        for h in [HairStyle.afro, .braids, .locs] {
+            var spec = HumanSpec(); spec.subdivision = 0; spec.hair = h
+            let m = HumanModel(spec)
+            XCTAssertTrue(m.mesh.positions.allSatisfy { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }, h.kind.rawValue)
+        }
+    }
+}

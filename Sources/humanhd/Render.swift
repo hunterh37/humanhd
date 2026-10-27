@@ -238,7 +238,10 @@ func lookCommand(_ args: [String]) async throws {
     }
     for (k, o) in Outfit.presets where args.contains(k) { spec.outfit = o }
     for (k, h) in HairStyle.presets where args.contains("hair=" + k) { spec.hair = h }
+    if let ft = FaceType.all.first(where: { args.contains($0.name) }) { ft.apply(to: &spec) }
+    for (k, h) in HairStyle.presets where args.contains("hair=" + k) { spec.hair = h.with { $0.seed = spec.hair.seed } }
     if args.contains("nude") { spec.outfit = .none }
+    if let tt = args.first(where: { $0.hasPrefix("tattoo=") })?.dropFirst(7), let n = Int(tt) { spec.appearance.detail.tattoo = n }
     if let hc = args.first(where: { $0.hasPrefix("haircolor=") })?.dropFirst(10), let v = UInt32(hc, radix: 16) { spec.appearance.hairColor = LinearColor(hex: v) }
     let t0 = Date()
     var ch = try await Human.make(spec, animate: true, seed: 2, lods: false)
@@ -251,6 +254,13 @@ func lookCommand(_ args: [String]) async throws {
         ch.animate(seed: 2)
     }
     ch.animator?.rootMotion = false
+    if let en = args.first(where: { $0.hasPrefix("expr=") })?.dropFirst(5), let ex = Expressions.named(String(en)) {
+        let w = args.first(where: { $0.hasPrefix("exprw=") }).flatMap { Float($0.dropFirst(6)) } ?? 1
+        let asym = args.first(where: { $0.hasPrefix("asym=") }).flatMap { Float($0.dropFirst(5)) } ?? 0.35
+        ch.animator?.core.blinkEnabled = false
+        ch.animator?.core.gazeWander = 0
+        ch.animator?.core.faceUnits = ex.units(intensity: w, asymmetry: asym)
+    }
     let build = Date().timeIntervalSince(t0)
     if args.contains("walk") { ch.animator?.core.speed = 1.3 }
     let env = try RealEnvironment(SunSky.afternoon, skybox: true)
@@ -264,10 +274,12 @@ func lookCommand(_ args: [String]) async throws {
     let az = (Float(args.first(where: { $0.hasPrefix("az=") })?.dropFirst(3) ?? "25") ?? 25) * .pi / 180
     let face = args.contains("face")
     let h = ch.body.skeleton.bones[ch.body.skeleton["head"]!].head.y
-    let focus = face ? V3(0, h + 0.05, 0.05) : V3(0, 0.88, 0)
-    let dist: Float = face ? 0.65 : 3.1
-    preview.look(from: focus + V3(sin(az) * dist, face ? 0.02 : 0.08, cos(az) * dist), at: focus, fov: 40)
-    guard let img = try await preview.render(width: 900, height: 1200, frames: 6) else { return }
+    let feet = args.contains("feet")
+    let focus = face ? V3(0, h + 0.05, 0.05) : (feet ? V3(0, 0.1, 0.06) : V3(0, 0.88, 0))
+    let dist: Float = face ? 0.65 : (feet ? 0.95 : 3.1)
+    preview.look(from: focus + V3(sin(az) * dist, face ? 0.02 : (feet ? 0.2 : 0.08), cos(az) * dist), at: focus, fov: 40)
+    let side = args.first(where: { $0.hasPrefix("size=") }).flatMap { Int($0.dropFirst(5)) }
+    guard let img = try await preview.render(width: side ?? 900, height: side ?? 1200, frames: 6) else { return }
     let out = args.first(where: { $0.hasSuffix(".png") }) ?? "out/look.png"
     writePNG(img, out)
     print(out, "build", Int(build * 1000), "ms tris", ch.mesh.triangleCount, "verts", ch.mesh.vertexCount)

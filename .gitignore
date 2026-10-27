@@ -70,3 +70,5 @@ AuthKey_*.p8
 *.swp
 *~
 .claude/settings.local.json
+
+out=*

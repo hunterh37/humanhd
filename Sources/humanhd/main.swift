@@ -56,11 +56,12 @@ func run() async throws {
         if args.contains("stubble") { d.stubble = 1.5 }
         if args.contains("freckles") { d.freckles = 0.8 }
         if args.contains("bodyhair") { d.bodyHair = 0.85 }
+        if let i = args.firstIndex(of: "tattoo"), i + 1 < args.count, let v = Int(args[i + 1]) { d.tattoo = v }
         for (atlas, name) in [(SkinAtlas.body, "body"), (.face, "face")] {
             let t0 = Date()
             let m = try painter.paintSync(d, atlas: atlas, size: size)
             print(name, Int(Date().timeIntervalSince(t0) * 1000), "ms")
-            for (t, k) in [(m.a, "a"), (m.n, "n"), (m.p, "p")] { if let img = synth.cgImage(t) { writePNG(img, "out/skin-\(name)-\(k).png") } }
+            for (t, k) in [(m.a, "a"), (m.n, "n"), (m.p, "p"), (m.t, "t")] { if let img = synth.cgImage(t) { writePNG(img, "out/skin-\(name)-\(k).png") } }
         }
     case "posetest":
         try await poseTestCommand(args)

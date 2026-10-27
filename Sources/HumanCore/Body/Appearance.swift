@@ -21,7 +21,11 @@ public struct SkinDetail: Codable, Sendable, Hashable {
     public var blotch: Float = 0.6
     /// Body hair coverage 0 ... 1 (pubic, armpits, forearms, shins, abdominal trail; sex-scaled).
     public var bodyHair: Float = 0
+    /// Buzz-cut scalp: hair-colored shadow painted above the hairline (0 none).
+    public var scalpHair: Float = 0
     public var seed: UInt32 = 1
+    /// Tattoo design id painted into the skin (0 none, 1 ... 10).
+    public var tattoo: Int = 0
     public init() {}
     public func with(_ edit: (inout SkinDetail) -> Void) -> SkinDetail { var c = self; edit(&c); return c }
 
@@ -42,7 +46,9 @@ public struct SkinDetail: Codable, Sendable, Hashable {
         if let v = try c.decodeIfPresent(Float.self, forKey: .sunExposure) { sunExposure = v }
         if let v = try c.decodeIfPresent(Float.self, forKey: .blotch) { blotch = v }
         if let v = try c.decodeIfPresent(Float.self, forKey: .bodyHair) { bodyHair = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .scalpHair) { scalpHair = v }
         if let v = try c.decodeIfPresent(UInt32.self, forKey: .seed) { seed = v }
+        if let v = try c.decodeIfPresent(Int.self, forKey: .tattoo) { tattoo = v }
     }
 
     /// Detail matched to a body shape (age, sex) with defaults for the rest.
@@ -115,9 +121,24 @@ public struct EyeLook: Codable, Sendable, Hashable {
     public var limbalRing: Float = 0.7
     public var pupil: Float = 0.38
     public var scleraRedness: Float = 0.2
+    /// 0 neutral warm white ... 1 yellow-brown (deeper skin tones carry a warmer, darker sclera).
+    public var scleraTint: Float = 0
     public var seed: UInt32 = 1
     public init() {}
     public func with(_ edit: (inout EyeLook) -> Void) -> EyeLook { var c = self; edit(&c); return c }
+
+    private enum CodingKeys: String, CodingKey { case iris, irisInner, limbalRing, pupil, scleraRedness, scleraTint, seed }
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self = EyeLook()
+        if let v = try c.decodeIfPresent(LinearColor.self, forKey: .iris) { iris = v }
+        if let v = try c.decodeIfPresent(LinearColor.self, forKey: .irisInner) { irisInner = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .limbalRing) { limbalRing = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .pupil) { pupil = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .scleraRedness) { scleraRedness = v }
+        if let v = try c.decodeIfPresent(Float.self, forKey: .scleraTint) { scleraTint = v }
+        if let v = try c.decodeIfPresent(UInt32.self, forKey: .seed) { seed = v }
+    }
     public static let brown = EyeLook()
     public static let darkBrown = EyeLook().with { $0.iris = LinearColor(hex: 0x2E1C10); $0.irisInner = LinearColor(hex: 0x3E2614) }
     public static let hazel = EyeLook().with { $0.iris = LinearColor(hex: 0x4F5A2A); $0.irisInner = LinearColor(hex: 0x8A5A22) }

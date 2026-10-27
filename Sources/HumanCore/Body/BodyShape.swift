@@ -89,6 +89,8 @@ public struct BodyShape: Codable, Sendable, Hashable {
 }
 
 public enum Morph {
+    /// Detail modifiers extrapolate up to this weight (authored targets stop at 1).
+    public static let maxModifier: Float = 1.8
     /// Component target -> weight, expanding macro targets into their stored family components and
     /// adding detail modifiers.
     public static func targetWeights(_ shape: BodyShape, data: HM08 = .shared) -> [String: Float] {
@@ -99,9 +101,9 @@ public enum Morph {
         }
         for (name, v) in shape.modifiers where v != 0 {
             guard let t = data.modifiers[name] else { continue }
-            if t.count == 1 { if let n = t[0] { out[n, default: 0] += min(1, max(0, v)) } }
-            else if v < 0 { if let n = t[0] { out[n, default: 0] += min(1, -v) } }
-            else if let n = t[1] { out[n, default: 0] += min(1, v) }
+            if t.count == 1 { if let n = t[0] { out[n, default: 0] += min(maxModifier, max(0, v)) } }
+            else if v < 0 { if let n = t[0] { out[n, default: 0] += min(maxModifier, -v) } }
+            else if let n = t[1] { out[n, default: 0] += min(maxModifier, v) }
         }
         return out
     }

@@ -17,6 +17,12 @@ public final class CharacterAnimator {
     public var speed: Float = 0
     /// Where to look (character space). nil = straight ahead.
     public var lookTarget: V3? { get { gaze.target } set { gaze.target = newValue } }
+    /// Random fixational eye jitter of the built-in gaze (degrees). 0 hands eye motion to an external controller.
+    public var gazeWander: Float { get { gaze.wander } set { gaze.wander = newValue } }
+    /// Starts a blink now.
+    public func blink() { gaze.blink() }
+    /// Spontaneous blinks on/off.
+    public var blinkEnabled: Bool { get { gaze.blinkEnabled } set { gaze.blinkEnabled = newValue } }
     public var expression: FacialExpression = .neutral
     public var expressionWeight: Float = 1
     /// Additional face units (ARKit-style rigs, custom expressions).

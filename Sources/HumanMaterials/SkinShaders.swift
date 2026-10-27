@@ -87,7 +87,9 @@ struct PaintParams {
     float blotch;       // redness variation 0 ... 1
     float veins;        // visible veins 0 ... 1
     float bodyHair;     // body hair density 0 ... 1
-    float pad0, pad1, pad2;
+    float tattoo;       // design id, 0 = none
+    float scalpHair;    // buzz-cut scalp darkness 0 ... 1
+    float pad2;
     float4 eyeL;        // xyz eye center (canonical)
     float4 eyeR;
     float4 mouth;       // xyz mouth center
@@ -269,7 +271,117 @@ LimbQ limbSpace(float3 p, float3 a, float3 b, float radius, float3 outerDir) {
     return r;
 }
 
+//@TATTOO@
+
 // Height of the skin surface (meters, small) at canonical position p.
+// Arm and calf muscle: radial bulges on a bone segment (a to b). front is the bulge direction.
+float2 limbBulge(float3 p, float3 a, float3 b, float3 front, float radius, float t0, float t1, float amount, float sharp) {
+    float3 ab = b - a;
+    float len = max(length(ab), 1e-4);
+    float3 axis = ab / len;
+    float t = dot(p - a, axis) / len;
+    float3 rel = p - (a + axis * t * len);
+    float d = length(rel);
+    float inside = 1.0 - sstep(radius * 0.8, radius * 1.15, d);
+    float3 fr = normalize(front - axis * dot(front, axis));
+    float c = dot(rel / max(d, 1e-4), fr);
+    float along = sstep(t0, t0 + 0.18, t) * (1.0 - sstep(t1 - 0.18, t1, t));
+    float lobe = pow(saturate(c), sharp);
+    return float2(amount * along * lobe * inside, along * inside * (1.0 - lobe) * 0.5);
+}
+
+// Superficial veins: thin ridged-noise lines on forearms, biceps and the back of the hands. Returns 0...1.
+float veinMask(float3 p, float male) {
+    float side = p.x >= 0.0 ? 1.0 : -1.0;
+    float3 el = float3(side * 0.313, 1.166, 0.013), wr = float3(side * 0.431, 1.062, 0.176), sh = float3(side * 0.19, 1.36, 0.0);
+    float3 ab = wr - el; float len = length(ab); float3 ax = ab / len;
+    float t = dot(p - el, ax);
+    float d = length(p - (el + ax * t));
+    float fore = (1.0 - sstep(0.04, 0.06, d)) * sstep(0.0, 0.05, t) * (1.0 - sstep(len - 0.02, len + 0.03, t));
+    float3 ab2 = el - sh; float len2 = length(ab2); float3 ax2 = ab2 / len2;
+    float t2 = dot(p - sh, ax2);
+    float d2 = length(p - (sh + ax2 * t2));
+    float bic = (1.0 - sstep(0.045, 0.065, d2)) * sstep(0.35 * len2, 0.55 * len2, t2) * (1.0 - sstep(len2 - 0.01, len2 + 0.02, t2));
+    float zone = max(fore, bic * 0.8);
+    if (zone < 0.01) { return 0.0; }
+    float n1 = fbm3(float3(p.x * 38.0, p.y * 38.0 * 0.5, p.z * 38.0), 3, 301u);
+    float line = 1.0 - sstep(0.0, 0.028, abs(n1));
+    return line * zone * mix(0.5, 1.0, male);
+}
+
+// Procedural torso musculature in canonical bind-pose meters (x lateral, y up, z front). Returns
+// (height m, groove 0...1): rectus segments with tendinous intersections, linea alba, lower pec edge,
+// sternum, serratus teeth, clavicle, deltoid split, spine groove and erectors on the back.
+float2 muscleRelief(float3 p, float male) {
+    float amp = mix(0.45, 1.0, male);
+    float ax = abs(p.x);
+    float h = 0.0, g = 0.0;
+    float front = sstep(0.0, 0.05, p.z), back = sstep(0.0, 0.05, -p.z + 0.02);
+    // Rectus abdominis: 3 rows of 2 domes.
+    {
+        float u = (p.y - 1.008) / 0.062;
+        float inRows = sstep(-0.1, 0.1, u) * (1.0 - sstep(2.9, 3.1, u));
+        float v = fract(u);
+        float dy = pow(max(sin(3.14159 * v), 0.0), 0.55);
+        float cx = saturate((ax - 0.004) / 0.066);
+        float dx = pow(max(sin(3.14159 * cx), 0.0), 0.5);
+        float m = inRows * dx * dy * (1.0 - sstep(0.07, 0.078, ax)) * front;
+        h += 0.0042 * m;
+        g = max(g, inRows * (1.0 - dx * dy) * (1.0 - sstep(0.07, 0.085, ax)) * front);
+    }
+    // Obliques bulge and serratus teeth above the iliac crest.
+    {
+        float lat = sstep(0.07, 0.09, ax) * (1.0 - sstep(0.16, 0.19, ax));
+        float vert = sstep(1.03, 1.08, p.y) * (1.0 - sstep(1.24, 1.28, p.y));
+        float diag = (p.y - 1.12) + (ax - 0.11) * 1.1;
+        float tooth = 0.5 + 0.5 * cos(diag / 0.032 * 6.2831853);
+        h += 0.0016 * lat * vert * front * (0.45 + 0.55 * tooth);
+        g = max(g, lat * vert * front * (1.0 - tooth) * 0.3);
+    }
+    // Pectoralis major: mass above a lower edge that climbs toward the armpit, sternal groove, clavicle.
+    {
+        float yb = 1.19 + 0.75 * ax;
+        float d = p.y - yb;
+        float pm = sstep(0.012, 0.03, ax) * (1.0 - sstep(0.15, 0.17, ax)) * front;
+        float mass = sstep(-0.004, 0.012, d) * (1.0 - sstep(0.06, 0.11, d));
+        float edge = exp(-pow(d / 0.0065, 2.0)) * pm;
+        h += 0.0055 * mass * pm - 0.0032 * edge;
+        g = max(g, edge * 0.9);
+        float stern = (1.0 - sstep(0.002, 0.009, ax)) * sstep(1.17, 1.21, p.y) * (1.0 - sstep(1.38, 1.41, p.y)) * front;
+        h -= 0.0005 * stern; g = max(g, stern * 0.05);
+        float cl = p.y - (1.392 - 0.12 * ax);
+        float clav = exp(-pow(cl / 0.0075, 2.0)) * sstep(0.012, 0.03, ax) * (1.0 - sstep(0.13, 0.16, ax)) * front;
+        h += 0.0022 * clav;
+        float cavity = exp(-pow((cl + 0.017) / 0.008, 2.0)) * sstep(0.02, 0.05, ax) * (1.0 - sstep(0.12, 0.15, ax)) * front;
+        h -= 0.0007 * cavity; g = max(g, cavity * 0.15);
+        // Deltoid / pec split.
+        float split = exp(-pow((ax - 0.158) / 0.0055, 2.0)) * sstep(1.27, 1.30, p.y) * (1.0 - sstep(1.38, 1.40, p.y)) * front;
+        h -= 0.0016 * split; g = max(g, split * 0.4);
+    }
+    // Back: spine groove with erector columns, lat flare.
+    {
+        float spine = (1.0 - sstep(0.002, 0.008, ax)) * sstep(0.98, 1.05, p.y) * (1.0 - sstep(1.34, 1.38, p.y)) * back;
+        float erect = sstep(0.008, 0.02, ax) * (1.0 - sstep(0.045, 0.06, ax)) * sstep(0.98, 1.04, p.y) * (1.0 - sstep(1.2, 1.26, p.y)) * back;
+        float lat = sstep(0.06, 0.1, ax) * (1.0 - sstep(0.17, 0.2, ax)) * sstep(1.05, 1.12, p.y) * (1.0 - sstep(1.3, 1.34, p.y)) * back;
+        h += 0.0026 * erect + 0.0034 * lat - 0.0010 * spine;
+        g = max(g, spine * 0.12);
+    }
+    // Arms: deltoid cap, biceps front, triceps back; calves bulge at the back of the lower leg.
+    {
+        float side = p.x >= 0.0 ? 1.0 : -1.0;
+        float3 sh = float3(side * 0.19, 1.36, 0.0), el = float3(side * 0.313, 1.166, 0.013);
+        float2 bi = limbBulge(p, sh, el, float3(0, 0, 1), 0.055, 0.25, 0.95, 0.0036, 1.6);
+        float2 tri = limbBulge(p, sh, el, float3(side * 0.4, 0.0, -1.0), 0.055, 0.2, 0.9, 0.0030, 1.4);
+        float delt = (1.0 - sstep(0.025, 0.075, length(p - float3(side * 0.205, 1.352, 0.0)))) * 0.0034;
+        h += bi.x + tri.x + delt; g = max(g, max(bi.y, tri.y) * 0.5);
+        float2 fa = limbBulge(p, el, float3(side * 0.431, 1.062, 0.176), float3(side * 0.2, 0.5, -0.3), 0.045, 0.0, 0.7, 0.0026, 1.2);
+        h += fa.x;
+        float2 ca = limbBulge(p, float3(side * 0.158, 0.447, 0.032), float3(side * 0.20, 0.075, 0.0), float3(0, 0, -1), 0.06, 0.0, 0.75, 0.0042, 1.3);
+        h += ca.x; g = max(g, ca.y * 0.4);
+    }
+    return float2(h * amp, g * amp);
+}
+
 float skinHeight(float3 p, Fields f, constant PaintParams &P, float poreScale) {
     float age = P.age;
     float aged = sstep(25.0, 75.0, age);
@@ -354,10 +466,11 @@ float skinHeight(float3 p, Fields f, constant PaintParams &P, float poreScale) {
         }
         h -= 0.00006 * analCoreMask(p);
     }
+    if (P.isFace < 0.5) { h += muscleRelief(p, P.sex).x; }
     return h;
 }
 
-struct SkinOut { float4 a; float4 n; float4 p; };
+struct SkinOut { float4 a; float4 n; float4 p; float4 t; };
 SkinOut paintSkin(float3 p, float3 nIn, float4 t4, Fields f, constant PaintParams &P) {
     float3 n = normalize(nIn);
     float3 t = normalize(t4.xyz - n * dot(t4.xyz, n));
@@ -394,6 +507,13 @@ SkinOut paintSkin(float3 p, float3 nIn, float4 t4, Fields f, constant PaintParam
     if (f.nose > 0.2 || f.cheeks > 0.2) {
         float cap = 1.0 - sstep(0.0, 0.08, abs(vnoise(p * 450.0, P.seed + 43u)));
         hem += 0.35 * cap * (f.nose + f.cheeks) * (0.2 + aged) * P.blotch;
+    }
+    // Fight-night flush: blood-warm chest, neck and shoulders; faint tan line where trunks sit.
+    if (P.isFace < 0.5) {
+        float frontF = sstep(-0.02, 0.05, p.z);
+        hem += 0.4 * sstep(1.18, 1.36, p.y) * (0.55 + 0.45 * blot) * male;
+        hem += 0.18 * (1.0 - sstep(0.0, 0.12, abs(abs(p.x) - 0.2))) * sstep(1.28, 1.38, p.y) * frontF;
+        mel *= mix(0.78, 1.0, sstep(0.9, 0.97, p.y));
     }
     // ---------------- freckles and moles (extra melanin, B channel)
     float freck = 0.0;
@@ -477,6 +597,9 @@ SkinOut paintSkin(float3 p, float3 nIn, float4 t4, Fields f, constant PaintParam
         // Follicle shadow: grey-blue under shaved skin.
         hair = max(hair, max(cov, dens * 0.18));
     }
+    if (P.scalpHair > 0.0 && f.scalp > 0.01) {
+        hair = max(hair, f.scalp * P.scalpHair * (0.8 + 0.2 * vnoise(p * 380.0, P.seed + 91u)));
+    }
     // ---------------- body hair (A): pubic, armpits, forearms, shins, abdominal trail
     if (P.bodyHair > 0.001 && P.isFace < 0.5) {
         float bh = P.bodyHair;
@@ -554,6 +677,7 @@ SkinOut paintSkin(float3 p, float3 nIn, float4 t4, Fields f, constant PaintParam
     rough += 0.04 * vnoise(p * 60.0, P.seed + 91u);
     rough = mix(rough, 0.62, hair * 0.8);
     float cav = saturate(1.0 + h0 * 6000.0);
+    if (P.isFace < 0.5) { cav *= 1.0 - 0.62 * muscleRelief(p, P.sex).y; }
     // Mouth interior: wet, dark, blood-red mucosa in shadow.
     float inner = f.lipLine;
     hem = mix(hem, 3.2, inner); mel = mix(mel, 0.5, inner);
@@ -587,6 +711,8 @@ SkinOut paintSkin(float3 p, float3 nIn, float4 t4, Fields f, constant PaintParam
     o.a = float4(saturate(mel * 0.5), saturate(hem * 0.25), saturate(freck), saturate(hair));
     o.n = float4(nts.xy * 0.5 + 0.5, 0.0, 1.0);
     o.p = float4(saturate(rough), cav, thick, spec);
+    float vm = P.isFace < 0.5 ? veinMask(p, P.sex) : 0.0;
+    o.t = float4(tattooTransmit(p, n, P) * mix(float3(1.0), float3(0.72, 0.84, 0.9), vm * 0.75), 1.0);
     return o;
 }
 
@@ -595,16 +721,17 @@ struct PaintTargets {
     float4 n [[color(1)]];
     float4 p [[color(2)]];
     float4 mask [[color(3)]];
+    float4 t [[color(4)]];
 };
 fragment PaintTargets hh_debug_fs(RasterOut i [[stage_in]]) {
     PaintTargets o; float v = i.f0.x;
-    o.a = float4(v, v * v, 1.0 - v, 1.0); o.n = float4(0.5, 0.5, 0.0, 1.0); o.p = float4(0.5, 1.0, 0.0, 0.3); o.mask = float4(1.0);
+    o.a = float4(v, v * v, 1.0 - v, 1.0); o.n = float4(0.5, 0.5, 0.0, 1.0); o.p = float4(0.5, 1.0, 0.0, 0.3); o.mask = float4(1.0); o.t = float4(1.0);
     return o;
 }
 fragment PaintTargets hh_paint_fs(RasterOut i [[stage_in]], constant PaintParams &P [[buffer(0)]]) {
     Fields f = unpack(i.f0, i.f1, i.f2, i.f3, i.f4);
     SkinOut s = paintSkin(i.pos.xyz, i.nrm.xyz, i.tan, f, P);
-    PaintTargets o; o.a = s.a; o.n = s.n; o.p = s.p; o.mask = float4(1.0);
+    PaintTargets o; o.a = s.a; o.n = s.n; o.p = s.p; o.mask = float4(1.0); o.t = s.t;
     return o;
 }
 
@@ -613,19 +740,20 @@ kernel void hh_dilate(texture2d<float, access::read> inA [[texture(0)]], texture
                       texture2d<float, access::read> inN [[texture(2)]], texture2d<float, access::write> outN [[texture(3)]],
                       texture2d<float, access::read> inP [[texture(4)]], texture2d<float, access::write> outP [[texture(5)]],
                       texture2d<float, access::read> maskIn [[texture(6)]], texture2d<float, access::write> maskOut [[texture(7)]],
+                      texture2d<float, access::read> inT [[texture(8)]], texture2d<float, access::write> outT [[texture(9)]],
                       uint2 gid [[thread_position_in_grid]]) {
     uint w = inA.get_width(), h = inA.get_height();
     if (gid.x >= w || gid.y >= h) return;
     float m = maskIn.read(gid).x;
-    if (m > 0.5) { outA.write(inA.read(gid), gid); outN.write(inN.read(gid), gid); outP.write(inP.read(gid), gid); maskOut.write(float4(1.0), gid); return; }
-    float4 a = 0.0, nn = 0.0, pp = 0.0; float c = 0.0;
+    if (m > 0.5) { outA.write(inA.read(gid), gid); outN.write(inN.read(gid), gid); outP.write(inP.read(gid), gid); outT.write(inT.read(gid), gid); maskOut.write(float4(1.0), gid); return; }
+    float4 a = 0.0, nn = 0.0, pp = 0.0, tt = 0.0; float c = 0.0;
     for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
         int2 q = int2(gid) + int2(x, y);
         if (q.x < 0 || q.y < 0 || q.x >= int(w) || q.y >= int(h)) continue;
-        if (maskIn.read(uint2(q)).x > 0.5) { a += inA.read(uint2(q)); nn += inN.read(uint2(q)); pp += inP.read(uint2(q)); c += 1.0; }
+        if (maskIn.read(uint2(q)).x > 0.5) { a += inA.read(uint2(q)); nn += inN.read(uint2(q)); pp += inP.read(uint2(q)); tt += inT.read(uint2(q)); c += 1.0; }
     }
-    if (c > 0.0) { outA.write(a / c, gid); outN.write(nn / c, gid); outP.write(pp / c, gid); maskOut.write(float4(1.0), gid); }
-    else { outA.write(inA.read(gid), gid); outN.write(float4(0.5, 0.5, 0.0, 1.0), gid); outP.write(inP.read(gid), gid); maskOut.write(float4(0.0), gid); }
+    if (c > 0.0) { outA.write(a / c, gid); outN.write(nn / c, gid); outP.write(pp / c, gid); outT.write(tt / c, gid); maskOut.write(float4(1.0), gid); }
+    else { outA.write(inA.read(gid), gid); outN.write(float4(0.5, 0.5, 0.0, 1.0), gid); outP.write(inP.read(gid), gid); outT.write(float4(1.0), gid); maskOut.write(float4(0.0), gid); }
 }
 
 // Tileable micro detail (pores and fine relief) for close range: RG normal, period 1.
@@ -646,6 +774,23 @@ float microPit(float2 q, uint seed) {
     float ridge = 0.08 * sin(r.x + 2.0 * sin(r.y * 0.5)) * sin(r.y * 0.7 + sin(r.x * 0.3));
     return -pit * (0.6 + 0.6 * id) + ridge;
 }
+// Sweat beads: sparse round domes on a jittered grid, 0 = dry skin, 1 = dome crest. Tileable, period 1.
+float sweatBead(float2 q, uint seed) {
+    float cells = 12.0;
+    float2 c = floor(q * cells);
+    float best = 0.0;
+    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+        float2 cc = c + float2(x, y);
+        int2 wc = int2(fmod(fmod(cc, cells) + cells, cells));
+        float3 j = h3(int3(wc, 19), seed);
+        if (j.z < 0.5) continue;
+        float r = 0.09 + 0.14 * j.z * j.z;
+        float2 ctr = cc + 0.2 + 0.6 * j.xy;
+        float d = length(ctr - q * cells) / r;
+        best = max(best, sqrt(saturate(1.0 - d * d)));
+    }
+    return best;
+}
 kernel void hh_micro(texture2d<float, access::write> outN [[texture(0)]], constant uint &seed [[buffer(0)]], uint2 gid [[thread_position_in_grid]]) {
     uint n = outN.get_width();
     if (gid.x >= n || gid.y >= n) return;
@@ -654,6 +799,6 @@ kernel void hh_micro(texture2d<float, access::write> outN [[texture(0)]], consta
     float h0 = microPit(uv, seed), hx = microPit(fract(uv + float2(e, 0.0)), seed), hy = microPit(fract(uv + float2(0.0, e)), seed);
     float2 g = float2(hx - h0, hy - h0) * 0.9;
     float3 nn = normalize(float3(-g.x, -g.y, 1.0));
-    outN.write(float4(nn.xy * 0.5 + 0.5, 0.0, 1.0), gid);
+    outN.write(float4(nn.xy * 0.5 + 0.5, sweatBead(uv, seed), 1.0), gid);
 }
 """#
