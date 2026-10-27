@@ -70,6 +70,8 @@ public struct Garment: Codable, Sendable, Hashable, Identifiable {
     public struct Cut: Codable, Sendable, Hashable {
         public enum Kind: String, Codable, Sendable { case none, sleeveless, shorts, sock, shoe }
         public var kind: Kind = .none
+        /// Footwear family for `.shoe` cuts (nil = sneaker).
+        public var shoe: ShoeStyle? = nil
         /// Neckline half width at the shoulder line.
         public var neckHalfWidth: Float = 0.075
         /// Neckline depth below the neck base, front and back.
@@ -305,7 +307,7 @@ public enum GarmentFitter {
             }
             if c.hands && isHand { inside = true }
             if c.pelvis && !isArm && !isHead && !isFoot {
-                let top = lerpY(lm.hipY - 0.02, lm.waistY + 0.02, c.rise)
+                let top = lerpY(lm.hipY - 0.02, lm.waistY + 0.06, c.rise)
                 if p.y < top && (p.y > lm.crotchY - 0.06 || (isLeg && legT() < 0.08)) && !(isLeg && legT() > 0.08) { inside = true }
             }
             if c.legs > 0 && isLeg {
@@ -326,6 +328,12 @@ public enum GarmentFitter {
     public static func fit(_ g: Garment, body: HumanBody, layerOffset: Float = 0) -> FittedGarment {
         if g.cut.kind == .shoe { return fitShoe(g, body: body, layerOffset: layerOffset) }
         if g.cut.kind != .none { return fitClipped(g, body: body, layerOffset: layerOffset) }
+        if isPelvisBottom(g) {
+            // Trousers, shorts, leggings and skirts: exact waist cut line with a raised contrast waistband.
+            var f = fitClipped(pelvisCut(g), body: body, layerOffset: layerOffset)
+            f.garment = g
+            return f
+        }
         let level = body.topologyLevel
         let info = info(level: level)
         let n = info.canon.count
@@ -443,6 +451,16 @@ public enum GarmentFitter {
                 idx += [ob, oa, ra, ob, ra, rb]
             }
         }
+        if g.coverage.skirt > 0 {
+            // The skirt tube covers everything below the waist seam; drop the shell triangles there so none can poke through.
+            var cy = [Float](repeating: .greatestFiniteMagnitude, count: m.positions.count)
+            for v in used { cy[Int(remap[v]!)] = info.canon[v].y }
+            for v in rim { if let r = rimMap[v] { cy[Int(r)] = info.canon[v].y } }
+            let cutY = skirtTopY(g, info.lm) - 0.03
+            var keep: [UInt32] = []
+            for t in stride(from: 0, to: idx.count, by: 3) where max(cy[Int(idx[t])], cy[Int(idx[t + 1])], cy[Int(idx[t + 2])]) >= cutY { keep += [idx[t], idx[t + 1], idx[t + 2]] }
+            idx = keep
+        }
         m.parts = [SkinnedMesh.Part(slot: .garment, material: g.material, indices: idx)]
         if let sole = g.sole {
             var upper: [UInt32] = [], rubber: [UInt32] = []
@@ -456,7 +474,9 @@ public enum GarmentFitter {
         source += Array(repeating: -1, count: m.positions.count - source.count)
         var chains: [ChainDef] = []
         if g.coverage.skirt > 0 {
-            let (tube, ch) = skirtTube(g, body: body, info: info, layerOffset: layerOffset)
+            var pts: [(Float, V3)] = []
+            for v in used.sorted() { if let i = remap[v] { pts.append((info.canon[v].y, m.positions[Int(i)])) } }
+            let (tube, ch) = skirtTube(g, body: body, info: info, layerOffset: layerOffset, shell: pts)
             source += Array(repeating: -1, count: tube.positions.count)
             m.append(tube)
             chains = ch
@@ -537,85 +557,231 @@ public enum GarmentFitter {
         }
     }
 
-    /// Skirt: a tube from the hips to the hem that bridges the legs, flaring out, folded into soft
-    /// vertical pleats; skinned to the pelvis with a share of the thighs so it follows the legs.
-    static func skirtTube(_ g: Garment, body: HumanBody, info: SkinInfo, layerOffset: Float) -> (SkinnedMesh, [ChainDef]) {
+    /// True for garments that hang from the waist and cover no torso: trousers, shorts, leggings, skirts.
+    static func isPelvisBottom(_ g: Garment) -> Bool {
+        g.cut.kind == .none && g.coverage.pelvis && !g.coverage.torso && g.layer == 1 && g.coverage.rise >= 0.8
+            && g.coverage.feet == 0 && (g.coverage.legs > 0 || g.coverage.skirt > 0)
+    }
+
+    /// Cut description for a pelvis garment: exact waist line, legs to the hem, waistband as the trim band.
+    static func pelvisCut(_ g: Garment) -> Garment {
+        var c = g
+        c.cut = Garment.Cut(kind: .shorts)
+        if g.coverage.skirt > 0 {
+            // The skirt tube owns the waistband; the shell underneath stops at the crotch.
+            c.coverage.legs = 0
+            c.trim = nil
+        } else {
+            c.trim = g.trim ?? waistbandMaterial(g.material)
+            c.trimWidth = g.material.hasPrefix("garment.lycra") ? 0.05 : 0.036
+        }
+        return c
+    }
+
+    /// Waistband fabric: the garment fabric a shade darker (lighter when already dark).
+    static func waistbandMaterial(_ key: String) -> String {
+        let parts = key.split(separator: ":", maxSplits: 1)
+        guard parts.count == 2, let hex = UInt32(parts[1], radix: 16) else { return key }
+        var c = [Float((hex >> 16) & 255), Float((hex >> 8) & 255), Float(hex & 255)]
+        let lum = (0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]) / 255
+        let dark = lum < 0.22
+        c = c.map { min(255, dark ? $0 * 1.6 + 14 : $0 * 0.72) }
+        return String(parts[0]) + ":" + String(format: "%02X%02X%02X", Int(c[0]), Int(c[1]), Int(c[2]))
+    }
+
+    /// Canonical height of the skirt waist: the natural waist for dresses, the pelvis piece top for skirts.
+    static func skirtTopY(_ g: Garment, _ lm: Landmarks) -> Float {
+        g.coverage.torso ? lm.hipY + (lm.waistY - lm.hipY) * 0.8
+            : (lm.hipY - 0.02) + ((lm.waistY + 0.06) - (lm.hipY - 0.02)) * g.coverage.rise
+    }
+
+    /// Skirt: a tube from the waist to the hem. Its radius follows the garment shell over the hips (cumulative
+    /// maximum, so the cloth never tucks in), then falls in a bell flare with godet waves and soft pleats.
+    /// A raised waistband sits on top; hem and waist edges have a folded rim. Skinned to the pelvis over the
+    /// hips and to simulated panels below. `shell` holds (canonical y, bind position) of the garment shell.
+    static func skirtTube(_ g: Garment, body: HumanBody, info: SkinInfo, layerOffset: Float, shell: [(Float, V3)]) -> (SkinnedMesh, [ChainDef]) {
         let lm = info.lm
         let sk = body.skeleton
-        let n = info.canon.count
-        let src = body.mesh
-        let topY = lm.hipY - 0.01
+        let dress = g.coverage.torso
+        let topY = skirtTopY(g, lm)
         let hemY = lm.crotchY - (lm.crotchY - lm.kneeY) * g.coverage.skirt * 1.0 - (g.coverage.skirt > 1 ? (lm.kneeY - lm.ankleY) * (g.coverage.skirt - 1) : 0)
-        let segs = 64, rings = 22
-        // Body radius per angle at the top ring (morphed positions), from skin vertices near that height.
-        let canonTop = topY
-        var topR = [Float](repeating: 0, count: segs)
-        var center = V3.zero, cnt: Float = 0
-        for i in 0..<n where abs(info.canon[i].y - canonTop) < 0.02 && abs(info.canon[i].x) < 0.25 {
-            let nm = sk.bones[info.dominant[i]].name
-            if nm.hasPrefix("lowerarm") || nm.hasPrefix("wrist") || nm.hasPrefix("finger") || nm.hasPrefix("upperarm") { continue }
-            center += src.positions[i]; cnt += 1
+        let segs = 72
+        // Shell envelope per world-height bin and angle (the morphed body is not a uniform scale of the canonical one).
+        let yLo = lm.crotchY - 0.05, yHi = topY + 0.012, step: Float = 0.01
+        var center = V3.zero, dyAcc: Float = 0, cnt: Float = 0
+        for (cy, p) in shell where cy > yLo && cy < yHi { center += p; dyAcc += p.y - cy; cnt += 1 }
+        guard cnt > 0 else { return (SkinnedMesh(), []) }
+        center /= cnt
+        let dy = dyAcc / cnt
+        func wy(_ cy: Float) -> Float { cy + dy }
+        // Skirts hang from the shell's own cut line: per-angle height offset taken from the topmost shell vertices.
+        var dyk = [Float](repeating: dy, count: segs)
+        if !dress {
+            var sum = [Float](repeating: 0, count: segs), num = [Float](repeating: 0, count: segs)
+            for (cy, p) in shell where cy > topY - 0.004 && cy <= topY + 1e-4 {
+                let d = p - center
+                let k = min(segs - 1, max(0, Int((atan2(d.x, d.z) / (2 * .pi) + 0.5) * Float(segs))))
+                sum[k] += p.y - cy; num[k] += 1
+            }
+            for k in 0..<segs where num[k] > 0 { dyk[k] = sum[k] / num[k] }
+            for _ in 0..<8 { for k in 0..<segs where num[k] == 0 {
+                let a = (k + 1) % segs, b = (k + segs - 1) % segs
+                if num[a] > 0 || num[b] > 0 { dyk[k] = (dyk[a] * (num[a] > 0 ? 1 : 0) + dyk[b] * (num[b] > 0 ? 1 : 0)) / ((num[a] > 0 ? 1 : 0) + (num[b] > 0 ? 1 : 0)); num[k] = 0.5 }
+            } }
+            for _ in 0..<3 { let r = dyk; for k in 0..<segs { dyk[k] = r[(k + segs - 1) % segs] * 0.25 + r[k] * 0.5 + r[(k + 1) % segs] * 0.25 } }
         }
-        center = cnt > 0 ? center / cnt : V3(0, topY, 0)
-        for i in 0..<n where abs(info.canon[i].y - canonTop) < 0.02 && abs(info.canon[i].x) < 0.25 {
-            let nm = sk.bones[info.dominant[i]].name
-            if nm.hasPrefix("lowerarm") || nm.hasPrefix("wrist") || nm.hasPrefix("finger") || nm.hasPrefix("upperarm") { continue }
-            let d = src.positions[i] - center
+        func dyAt(_ a: Float, _ cy: Float) -> Float {
+            let k = ((Int((a / (2 * .pi) + 0.5) * Float(segs) + 0.5) % segs) + segs) % segs
+            let t = min(1, max(0, (topY - cy) / max(1e-3, topY - lm.crotchY)))
+            return dyk[k] * (1 - t) + dy * t
+        }
+        func wyA(_ a: Float, _ cy: Float) -> Float { cy + dyAt(a, cy) }
+        let wLo = wy(yLo) - 0.03, wHi = wy(yHi) + 0.03
+        let bins = Int((wHi - wLo) / step) + 1
+        var env = [Float](repeating: 0, count: bins * segs)
+        for (_, p) in shell where p.y >= wLo && p.y <= wHi {
+            let d = p - center
             let a = atan2(d.x, d.z)
-            let k = (Int((a / (2 * .pi) + 0.5) * Float(segs)) + segs) % segs
-            topR[k] = max(topR[k], simd_length(V2(d.x, d.z)))
+            let k = min(segs - 1, max(0, Int((a / (2 * .pi) + 0.5) * Float(segs))))
+            let b = min(bins - 1, max(0, Int((p.y - wLo) / step)))
+            env[b * segs + k] = max(env[b * segs + k], simd_length(V2(d.x, d.z)))
         }
-        // Fill empty sectors.
-        for _ in 0..<4 { for k in 0..<segs where topR[k] == 0 { topR[k] = max(topR[(k + 1) % segs], topR[(k + segs - 1) % segs]) } }
-        let root = sk["root"] ?? 0, legL = sk["upperleg01.L"] ?? 0, legR = sk["upperleg01.R"] ?? 0
-        let topWorldY = center.y
-        let hemWorldY = topWorldY - (canonTop - hemY)
-        var m = SkinnedMesh()
+        func blurAngles(_ row: Int, passes: Int) {
+            for _ in 0..<passes {
+                let r = Array(env[row * segs..<(row + 1) * segs])
+                for k in 0..<segs { env[row * segs + k] = r[(k + segs - 1) % segs] * 0.25 + r[k] * 0.5 + r[(k + 1) % segs] * 0.25 }
+            }
+        }
+        for b in 0..<bins {
+            // Fill empty sectors from neighbors, then smooth.
+            for _ in 0..<8 { for k in 0..<segs where env[b * segs + k] == 0 { env[b * segs + k] = max(env[b * segs + (k + 1) % segs], env[b * segs + (k + segs - 1) % segs]) } }
+        }
+        // Rows with no samples borrow the nearest row.
+        for b in 1..<bins where env[b * segs..<(b + 1) * segs].allSatisfy({ $0 == 0 }) { for k in 0..<segs { env[b * segs + k] = env[(b - 1) * segs + k] } }
+        for b in stride(from: bins - 2, through: 0, by: -1) where env[b * segs..<(b + 1) * segs].allSatisfy({ $0 == 0 }) { for k in 0..<segs { env[b * segs + k] = env[(b + 1) * segs + k] } }
+        for b in 0..<bins { blurAngles(b, passes: 2) }
+        // Cumulative maximum from the top down (outer silhouette that never narrows below the widest hip).
+        var cum = env
+        for b in stride(from: bins - 2, through: 0, by: -1) { for k in 0..<segs { cum[b * segs + k] = max(env[b * segs + k], cum[(b + 1) * segs + k]) } }
+        for b in 0..<bins { for _ in 0..<2 {
+            let r = Array(cum[b * segs..<(b + 1) * segs])
+            for k in 0..<segs { cum[b * segs + k] = max(r[k], r[(k + segs - 1) % segs] * 0.25 + r[k] * 0.5 + r[(k + 1) % segs] * 0.25) }
+        } }
+        // Soften steps between height bins (thighs and buttocks widening under the crotch): only ever fills outward.
+        for _ in 0..<4 {
+            let c0 = cum
+            for b in 1..<(bins - 1) { for k in 0..<segs { cum[b * segs + k] = max(c0[b * segs + k], c0[(b - 1) * segs + k] * 0.25 + c0[b * segs + k] * 0.5 + c0[(b + 1) * segs + k] * 0.25) } }
+        }
+        func hipRadius(_ a: Float, _ cy: Float) -> Float {
+            let f = min(Float(bins - 1) - 1e-3, max(0, (wyA(a, cy) - wLo) / step))
+            let b = Int(f), tb = f - Float(b)
+            let u = (a / (2 * .pi) + 0.5) * Float(segs)
+            let k0 = ((Int(floor(u)) % segs) + segs) % segs, k1 = (k0 + 1) % segs, tk = u - floor(u)
+            func at(_ bb: Int) -> Float { cum[bb * segs + k0] * (1 - tk) + cum[bb * segs + k1] * tk }
+            return at(b) * (1 - tb) + at(min(bins - 1, b + 1)) * tb
+        }
+        let root = sk["root"] ?? 0
         let seed = UInt32(truncatingIfNeeded: g.id.hashValue & 0xFFFF)
-        let chainCount = 20, chainSegs = 6
-        _ = (legL, legR)
-        func ringPoint(_ a: Float, _ t: Float) -> V3 {
-            let k = Int((a / (2 * .pi) + 0.5) * Float(segs) + 0.5) % segs
-            let rad = topR[k] * (1 + 0.05 * t) + g.offset + layerOffset + 0.012 + g.flare * t * t
-            return center + V3(sin(a) * rad, (hemWorldY - topWorldY) * t + topWorldY - center.y, cos(a) * rad)
+        let chainCount = 24, chainSegs = 6
+        let bandH: Float = dress ? 0.026 : 0.034
+        let raise: Float = 0.0035
+        let waveN = Float(7)
+        let flare = g.flare * 1.0
+        // Fraction below the crotch toward the hem (0 at the hips).
+        let flareY = lm.crotchY + 0.05
+        func below(_ cy: Float) -> Float { min(1, max(0, (flareY - cy) / max(1e-3, flareY - hemY))) }
+        func baseRadius(_ a: Float, _ cy: Float, bandRaise: Float) -> Float {
+            let tB = below(cy)
+            let hipT = min(1, max(0, (topY - cy) / max(1e-3, topY - lm.crotchY)))
+            let margin = g.offset + layerOffset + 0.003 + 0.007 * smoothstep(0, 1, hipT)
+            let wave = 0.22 * flare * pow(tB, 2) * sin(a * waveN + 0.6)
+            return hipRadius(a, cy) + margin + bandRaise + flare * pow(tB, 1.3) + 0.03 * tB + wave
         }
+        // Row heights: band top, band bottom, fabric start, hips, then the skirt body.
+        var rowY: [Float] = [topY, topY - bandH, topY - bandH - 0.004]
+        let y2 = rowY[2]
+        for i in 1...6 { rowY.append(y2 - (y2 - lm.crotchY) * Float(i) / 6) }
+        for i in 1...18 { let t = Float(i) / 18; rowY.append(lm.crotchY - (lm.crotchY - hemY) * (t + 0.08 * t * (1 - t) * 0)) }
+        let rows = rowY.count
         var chains: [ChainDef] = []
+        func chainRow(_ t: Float) -> Float { topY - (topY - hemY) * t }
         for c in 0..<chainCount {
             let a = (Float(c) / Float(chainCount) - 0.5) * 2 * .pi
-            var def = ChainDef(parent: root, points: (0...chainSegs).map { ringPoint(a, Float($0) / Float(chainSegs)) })
+            var def = ChainDef(parent: root, points: (0...chainSegs).map { i in
+                let cy = chainRow(Float(i) / Float(chainSegs)), r = baseRadius(a, cy, bandRaise: 0)
+                return V3(center.x + sin(a) * r, wyA(a, cy), center.z + cos(a) * r)
+            })
             def.stiffness = 0.05; def.damping = 0.86; def.radius = 0.018
             chains.append(def)
         }
-        for r in 0...rings {
-            let t = Float(r) / Float(rings)
-            let y = topWorldY + (hemWorldY - topWorldY) * t
+        var m = SkinnedMesh()
+        let tc = (topY - lm.crotchY) / (topY - hemY)
+        func addVertex(_ p: V3, a: Float, cy: Float, k: Int) {
+            m.positions.append(p)
+            m.normals.append(simd_normalize(V3(sin(a), 0.15, cos(a))))
+            m.tangents.append(V4(cos(a), 0, -sin(a), 1))
+            m.uvs.append(V2(Float(k) / Float(segs) * 2 * .pi * 0.2, -p.y))
+            let t = (topY - cy) / (topY - hemY)
+            let fa = Float(k) / Float(segs) * Float(chainCount)
+            let c0 = Int(fa) % chainCount, c1 = (c0 + 1) % chainCount, f = fa - Float(Int(fa))
+            let seg = min(chainSegs - 1, max(0, Int(t * Float(chainSegs))))
+            let rootW = 1 - smoothstep(tc * 0.85, tc + 0.1, t)
+            m.joints.append(SIMD4(UInt16(root), chainMarker + UInt16(c0 * chainSegs + seg), chainMarker + UInt16(c1 * chainSegs + seg), 0))
+            m.weights.append(SIMD4(rootW, (1 - rootW) * (1 - f), (1 - rootW) * f, 0))
+            m.faceUVs.append(.zero); m.aux.append(V2(0, 1))
+        }
+        for r in 0..<rows {
+            let band = r <= 1
             for k in 0...segs {
                 let a = (Float(k) / Float(segs) - 0.5) * 2 * .pi
-                let base = topR[k % segs] * (1 + 0.05 * t) + g.offset + layerOffset + 0.012
-                let pleat = Noise.perlin(V3(a * 2.2, t * 1.4, 0), seed: seed) * g.folds * 2.5 * t + sin(a * 9 + Noise.perlin(V3(a, t * 2, 3), seed: seed) * 2) * g.folds * t
-                let rad = base + g.flare * t * t + pleat
-                let p = center + V3(sin(a) * rad, y - center.y, cos(a) * rad)
-                m.positions.append(p)
-                m.normals.append(simd_normalize(V3(sin(a), 0.15, cos(a))))
-                m.tangents.append(V4(cos(a), 0, -sin(a), 1))
-                m.uvs.append(V2(Float(k) / Float(segs) * 2 * .pi * 0.2, -y))
-                // Skinning: pelvis at the waistband, simulated panels below (two neighbors by angle).
-                let fa = Float(k) / Float(segs) * Float(chainCount)
-                let c0 = Int(fa) % chainCount, c1 = (c0 + 1) % chainCount, f = fa - Float(Int(fa))
-                let seg = min(chainSegs - 1, Int(t * Float(chainSegs)))
-                let rootW = 1 - smoothstep(0.0, 0.14, t)
-                m.joints.append(SIMD4(UInt16(root), chainMarker + UInt16(c0 * chainSegs + seg), chainMarker + UInt16(c1 * chainSegs + seg), 0))
-                m.weights.append(SIMD4(rootW, (1 - rootW) * (1 - f), (1 - rootW) * f, 0))
-                m.faceUVs.append(.zero); m.aux.append(V2(0, 1))
+                let tB = below(rowY[r])
+                // Godet hem: the hem line dips and lifts with the waves.
+                let cy = rowY[r] - 0.012 * pow(tB, 3) * (sin(a * waveN + 0.6) * 0.5 + 0.5) * min(1, flare / 0.1)
+                let ramp = smoothstep(0.0, 0.55, tB)
+                let amp = (g.folds * 0.8 + 0.0015) * ramp * (1 + flare * 4)
+                let pleat = (Noise.perlin(V3(a * 2.2, tB * 1.4, 0), seed: seed) * 1.0 + sin(a * 12 + Noise.perlin(V3(a, tB * 2, 3), seed: seed) * 2.2) * 0.65) * amp
+                let rad = baseRadius(a, cy, bandRaise: band ? raise : 0) + pleat
+                addVertex(V3(center.x + sin(a) * rad, wyA(a, cy), center.z + cos(a) * rad), a: a, cy: cy, k: k)
             }
         }
-        var idx: [UInt32] = []
-        let row = UInt32(segs + 1)
-        for r in 0..<UInt32(rings) { for k in 0..<UInt32(segs) {
-            let a = r * row + k, b = a + 1, c = a + row + 1, d = a + row
-            idx += [a, d, c, a, c, b]
-        }}
-        m.parts = [SkinnedMesh.Part(slot: .garment, material: g.material, indices: idx)]
+        // Folded rims: waist edge and hem edge turn inward.
+        let row = segs + 1
+        func rim(_ r: Int, inward: Float, lift: Float) -> Int {
+            let start = m.positions.count
+            for k in 0...segs {
+                let i = r * row + k
+                let p = m.positions[i]
+                let d = V2(p.x - center.x, p.z - center.z)
+                let dir = simd_length(d) > 1e-6 ? d / simd_length(d) : V2(0, 1)
+                m.positions.append(V3(p.x - dir.x * inward, p.y + lift, p.z - dir.y * inward))
+                m.normals.append(-m.normals[i]); m.tangents.append(m.tangents[i]); m.uvs.append(m.uvs[i])
+                m.joints.append(m.joints[i]); m.weights.append(m.weights[i]); m.faceUVs.append(.zero); m.aux.append(.zero)
+            }
+            return start
+        }
+        let topRim = rim(0, inward: 0.007, lift: -0.001)
+        let hemRim = rim(rows - 1, inward: 0.009, lift: 0.004)
+        var fabric: [UInt32] = [], band: [UInt32] = []
+        func quad(_ out: inout [UInt32], _ a: UInt32, _ b: UInt32, _ c: UInt32, _ d: UInt32, facing: V3?) {
+            var t1: [UInt32] = [a, d, c], t2: [UInt32] = [a, c, b]
+            if let f = facing {
+                let p0 = m.positions[Int(a)], p1 = m.positions[Int(d)], p2 = m.positions[Int(c)]
+                if simd_dot(simd_cross(p1 - p0, p2 - p0), f) < 0 { t1 = [a, c, d]; t2 = [a, b, c] }
+            }
+            out += t1 + t2
+        }
+        for r in 0..<(rows - 1) { for k in 0..<segs {
+            let a = UInt32(r * row + k), b = a + 1, d = a + UInt32(row), c = d + 1
+            if r <= 1 { quad(&band, a, b, c, d, facing: nil) } else { quad(&fabric, a, b, c, d, facing: nil) }
+        } }
+        for k in 0..<segs {
+            let a = UInt32(topRim + k), b = a + 1, d = UInt32(k), c = d + 1
+            quad(&band, d, c, b, a, facing: V3(0, 1, 0))
+            let h = UInt32((rows - 1) * row + k), h1 = h + 1, i0 = UInt32(hemRim + k), i1 = i0 + 1
+            quad(&fabric, h, h1, i1, i0, facing: V3(0, -1, 0))
+        }
+        m.parts = [SkinnedMesh.Part(slot: .garment, material: g.material, indices: fabric),
+                   SkinnedMesh.Part(slot: .garment, material: g.trim ?? waistbandMaterial(g.material), indices: band)]
         m.computeFrames(weld: true)
         return (m, chains)
     }

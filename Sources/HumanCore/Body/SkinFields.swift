@@ -119,7 +119,7 @@ public final class SkinFields: Sendable {
             }
             let hairY = eyeL.y + hy
             let inHead = q.y > mouthC.y - 0.06 && simd_distance(V2(q.x, q.z), V2(0, zc)) < 0.13
-            f[Field.scalp.rawValue][v] = inHead ? sm(q.y, hairY, hairY + 0.012) : 0
+            f[Field.scalp.rawValue][v] = inHead ? sm(q.y, hairY - 0.004, hairY + 0.02) : 0
         }
         // Areola: the morph footprint is ring-shaped (the areola edge moves most), so rebuild it as
         // a filled disc around each nipple peak: 0.62 plateau fading at ~4 cm, 1.0 core (the papilla).

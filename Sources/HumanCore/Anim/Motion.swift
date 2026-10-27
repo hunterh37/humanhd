@@ -177,11 +177,27 @@ public struct GazeController: Sendable {
     var rng = SeededRNG(seed: 11)
     var lastEyeTarget = V2.zero
     public var blinkWeight: Float = 0
+    /// Spontaneous and gaze-shift blinks (off for held expression stills).
+    public var blinkEnabled = true
+    /// Tiny fixational microsaccades between saccades (degrees).
+    public var microAmplitude: Float = 0.25
+    var microOffset = V2.zero
+    var nextMicro: Float = 0.2
+    var blinkDepth: Float = 1
+    var blinkOpenTime: Float = 0.16
+    var doubleBlink = false
 
     public init(seed: UInt64 = 11) { rng = SeededRNG(seed: seed) }
 
     /// Starts a blink now.
-    public mutating func blink() { if blinkT < 0 { blinkT = 0 } }
+    public mutating func blink() {
+        guard blinkT < 0 else { return }
+        blinkT = 0
+        // Human blink variability: ~15% partial (lids reach 60-85%), ~12% followed by a second blink.
+        blinkDepth = rng.chance(0.15) ? rng.float(0.6...0.85) : 1
+        blinkOpenTime = rng.float(0.13...0.21)
+        doubleBlink = rng.chance(0.12)
+    }
 
     public mutating func update(_ pose: inout Pose, anatomy a: Anatomy, face: FaceRig?, dt: Float, units: inout [FaceRig.Unit: Float], lod: Int) {
         let s = a.skeleton
@@ -200,7 +216,9 @@ public struct GazeController: Sendable {
             nextSaccade = rng.float(0.35...2.4)
             saccadeOffset = V2(rng.float(-1...1), rng.float(-0.6...0.6)) * wander
         }
-        let eyeTarget = V2(yaw, pitch) + saccadeOffset
+        nextMicro -= dt
+        if nextMicro <= 0 { nextMicro = rng.float(0.08...0.35); microOffset = V2(rng.float(-1...1), rng.float(-1...1)) * microAmplitude }
+        let eyeTarget = V2(yaw, pitch) + saccadeOffset + microOffset
         // Head takes the large part of big gaze shifts.
         let headShare: Float = abs(yaw) > 18 ? 0.75 : 0.35
         headYaw.update(yaw * headShare, halfLife: 0.22, dt: dt)
@@ -208,7 +226,7 @@ public struct GazeController: Sendable {
         let wantEyeYaw = max(-32, min(32, eyeTarget.x - headYaw.value)), wantEyePitch = max(-25, min(22, eyeTarget.y - headPitch.value))
         eyeYaw.update(wantEyeYaw, halfLife: 0.018, dt: dt)
         eyePitch.update(wantEyePitch, halfLife: 0.018, dt: dt)
-        if simd_distance(eyeTarget, lastEyeTarget) > 25 && rng.chance(0.7) { blink() }
+        if simd_distance(eyeTarget, lastEyeTarget) > 25 && rng.chance(0.7) && blinkEnabled { blink() }
         lastEyeTarget = eyeTarget
         // Distribute head turn: spine 10%, neck 40%, head 50%.
         let hy = headYaw.value, hp = headPitch.value
@@ -224,15 +242,16 @@ public struct GazeController: Sendable {
         }
         // Blinks.
         nextBlink -= dt
-        if nextBlink <= 0 { blink(); nextBlink = -log(max(1e-3, rng.float())) * 4.0 + 0.6 }
+        if nextBlink <= 0 { if blinkEnabled { blink() }; nextBlink = -log(max(1e-3, rng.float())) * 4.0 + 0.6 }
         var bw: Float = 0
         if blinkT >= 0 {
             blinkT += dt
-            let close: Float = 0.075, hold: Float = 0.03, open: Float = 0.16
+            let close: Float = 0.075, hold: Float = 0.03, open: Float = blinkOpenTime
             if blinkT < close { bw = blinkT / close }
             else if blinkT < close + hold { bw = 1 }
             else if blinkT < close + hold + open { let u = (blinkT - close - hold) / open; bw = 1 - u * u * (3 - 2 * u) }
-            else { blinkT = -1 }
+            else { blinkT = -1; if doubleBlink { doubleBlink = false; blinkT = 0; blinkDepth = 1 } }
+            bw *= blinkDepth
         }
         blinkWeight = bw
         // Lids follow gaze: looking down lowers the upper lid.

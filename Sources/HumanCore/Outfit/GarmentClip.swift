@@ -34,8 +34,11 @@ extension GarmentFitter {
             let b = g.coverage.torsoBottom
             return b <= 1 ? lm.crotchY + (lm.waistY - lm.crotchY) * b : lm.waistY + (lm.chestY - lm.waistY) * (b - 1)
         }
-        var shortsTop: Float { (lm.hipY - 0.02) + ((lm.waistY + 0.02) - (lm.hipY - 0.02)) * g.coverage.rise }
-        var shortsHem: Float { lm.crotchY - g.coverage.legs * (lm.crotchY - lm.kneeY) }
+        var shortsTop: Float { (lm.hipY - 0.02) + ((lm.waistY + 0.06) - (lm.hipY - 0.02)) * g.coverage.rise }
+        var shortsHem: Float {
+            let l = g.coverage.legs
+            return l <= 1 ? lm.crotchY - l * (lm.crotchY - lm.kneeY) : lm.kneeY - (l - 1) * (lm.kneeY - lm.ankleY)
+        }
 
         func neck(_ p: V3) -> Float {
             let c = g.cut
@@ -289,7 +292,7 @@ extension GarmentFitter {
             let chest = g.cut.kind == .sleeveless ? g.cut.chestEase * smoothstep(shape.armpit - 0.2, shape.armpit - 0.02, c.y) * (1 - smoothstep(shape.armpit + 0.02, shape.armpit + 0.1, c.y)) * max(0, s.nrm[v].z) : 0
             let off = (g.offset + layerOffset) * shape.looseness(c) + chest + g.flare * (1 - flareT) * (1 - flareT)
             m.positions.append(s.pos[v] + s.nrm[v] * off)
-            foldAmount.append(max(-g.offset * 0.6, fold))
+            foldAmount.append(max(-off * 0.35, fold))
             minOff.append(off * 0.7)
             m.normals.append(s.nrm[v]); m.tangents.append(s.tan[v])
             let ang = atan2(c.z, c.x)
@@ -332,6 +335,13 @@ extension GarmentFitter {
             for (v, h) in heights { m.positions[Int(remap[v]!)] = s.pos[v] + s.nrm[v] * h }
         }
         for v in used { let i = Int(remap[v]!); m.positions[i] += s.nrm[v] * foldAmount[i] }
+        // Waistband: the trim band stands a little proud of the fabric and stays flat (no fold noise).
+        if g.cut.kind == .shorts, g.trim != nil {
+            for v in used where s.f1[v] <= g.trimWidth + 1e-5 {
+                let i = Int(remap[v]!)
+                m.positions[i] += s.nrm[v] * (0.0028 - foldAmount[i] * 0.8)
+            }
+        }
         if g.cut.kind == .sock { shapeSock(&m, used: used.filter { $0 < n }, info: info, remap: remap) }
 
         // Hem: the opening rim folded inward, so the cloth has visible thickness.
@@ -367,8 +377,17 @@ extension GarmentFitter {
             addEmblems(g, shape: shape, mesh: &m, canon: canonAll, triangles: fabric + trimTris, remap: remap)
         }
         var source = shellSrc.map { $0 >= 0 && $0 < n ? $0 : -1 }
+        var chains: [ChainDef] = []
+        if g.coverage.skirt > 0 && g.cut.kind == .shorts {
+            let pts = (0..<min(canonAll.count, m.positions.count)).map { (canonAll[$0].y, m.positions[$0]) }
+            let (tube, ch) = skirtTube(g, body: body, info: info, layerOffset: layerOffset, shell: pts)
+            // The tube covers hips and legs down to the hem; the shell only served as its envelope and to hide skin.
+            m = tube
+            source = Array(repeating: -1, count: tube.positions.count)
+            chains = ch
+        }
         source += Array(repeating: -1, count: m.positions.count - source.count)
-        return FittedGarment(garment: g, mesh: m, hidden: hidden, source: source, chains: [])
+        return FittedGarment(garment: g, mesh: m, hidden: hidden, source: source, chains: chains)
     }
 
     /// Duplicates vertices of triangles that straddle the uv wrap so fabric never stretches across it.

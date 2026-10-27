@@ -16,7 +16,9 @@ import HumanCore
 ///   uv3 = (face-atlas weight, part data).
 @MainActor
 public final class GPUSkinner {
-    public static let shared: GPUSkinner? = try? GPUSkinner()
+    public static let shared: GPUSkinner? = {
+        do { return try GPUSkinner() } catch { FileHandle.standardError.write(Data("GPUSkinner init: \(error)\n".utf8)); return nil }
+    }()
 
     public let device: MTLDevice
     public let queue: MTLCommandQueue

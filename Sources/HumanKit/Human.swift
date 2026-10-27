@@ -108,15 +108,15 @@ public enum HairMaterial {
     public static func make(_ kind: Kind, color: SIMD3<Float>) throws -> any RealityKit.Material {
         var m = PhysicallyBasedMaterial()
         m.baseColor = .init(tint: .init(linear: color))
-        m.roughness = 0.42
-        m.specular = 0.45
+        m.roughness = 0.8
+        m.specular = 0.08
         m.faceCulling = .none
         var s = StrandPainter.Spec(); s.strands = 40; s.width = 0.16; s.clump = 0; s.drift = 0.1; s.minLength = 1; s.seed = 4; s.ramp = 1
         let t = try strands(2, s, w: 256, h: 256)
         // Opaque dark scalp under the cards: inside the hairline no skin shows through partings.
         _ = t
         m.baseColor = .init(tint: .init(linear: color * 0.55))
-        m.roughness = 0.7
+        m.roughness = 0.9
         return m
     }
 
@@ -125,7 +125,7 @@ public enum HairMaterial {
         let cov = g.input("asset", "Coverage", "@@")
         let color = g.input("float3", "HairColor", "(0.05, 0.03, 0.02)")
         let sun = g.input("float3", "SunDirection", "(0, -1, 0)")
-        let spec1 = g.input("float", "Highlight", "0.55")
+        let spec1 = g.input("float", "Highlight", "0.9")
         let threshold = g.input("float", "Threshold", "0.4")
         let uv = g.texcoord(0)
         let c = g.xyzw(g.sample(cov, uv))
@@ -149,11 +149,17 @@ public enum HairMaterial {
         let sin2 = g.node("ND_sqrt_float", [("float", "in", g.node("ND_max_float", [("float", "in1", g.sub("1", g.mul(th2, th2))), ("float", "in2", "0")], out: "float"))], out: "float")
         let secondary = g.pow(sin2, "30")
         let lit = g.clamp01(g.add(g.mul(g.dot3(toSun, g.normalize3(g.node("ND_normal_vector3", [("string", "space", "\"world\"")], out: "float3"))), "0.5"), "0.6"))
-        let hl = g.add3(g.scale3(g.node("ND_combine3_vector3", [("float", "in1", "1"), ("float", "in2", "0.95"), ("float", "in3", "0.88")], out: "float3"), g.mul(primary, g.mul(spec1, "0.35"))),
+        let hl = g.add3(g.scale3(g.node("ND_combine3_vector3", [("float", "in1", "1"), ("float", "in2", "0.95"), ("float", "in3", "0.88")], out: "float3"), g.mul(primary, g.mul(spec1, "0.3"))),
                         g.scale3(g.mul3(color, g.node("ND_combine3_vector3", [("float", "in1", "3"), ("float", "in2", "2.5"), ("float", "in3", "2")], out: "float3")), g.mul(secondary, spec1)))
-        let emissive = g.scale3(hl, g.mul(lit, c[0]))
+        // Rim sheen: grazing-angle lift in a cool sky tint, so dark hair keeps a readable silhouette.
+        let nW = g.normalize3(g.node("ND_normal_vector3", [("string", "space", "\"world\"")], out: "float3"))
+        let ndv = g.node("ND_absval_float", [("float", "in", g.dot3(nW, toEye))], out: "float")
+        let rim = g.pow(g.clamp01(g.sub("1", ndv)), "3")
+        let rimCol = g.add3(g.scale3(g.node("ND_combine3_vector3", [("float", "in1", "0.30"), ("float", "in2", "0.34"), ("float", "in3", "0.42")], out: "float3"), g.mul(rim, "0.22")),
+                            g.scale3(g.mul3(color, g.node("ND_combine3_vector3", [("float", "in1", "6"), ("float", "in2", "5"), ("float", "in3", "4")], out: "float3")), rim))
+        let emissive = g.scale3(g.add3(hl, rimCol), g.mul(lit, c[0]))
         let surface = g.node("ND_realitykit_pbr_surfaceshader", [
-            ("color3f", "baseColor", g.toColor(base)), ("float", "roughness", "0.5"), ("float", "specular", "0.3"), ("float", "metallic", "0"),
+            ("color3f", "baseColor", g.toColor(base)), ("float", "roughness", "0.82"), ("float", "specular", "0.06"), ("float", "metallic", "0"),
             ("float", "opacity", c[0]), ("float", "opacityThreshold", threshold), ("color3f", "emissiveColor", g.toColor(emissive)),
             ("bool", "hasPremultipliedAlpha", "0"),
         ], out: "token")

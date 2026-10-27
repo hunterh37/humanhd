@@ -32,10 +32,20 @@ public enum GarmentFabrics {
             $0.colorA = linear(0xE8EAF0); $0.colorB = linear(0xDDE0E8, 0.1); $0.colorC = linear(0x505050, 0.02)
             $0.knobs = V4(70, 0.15, 0.7, 0); $0.seed = 105; $0.tileSize = 0.012; $0.normalStrength = 0.9; $0.roughness = 0.7; $0.twoSided = true
         },
+        // Referee shirting: white poplin with black bands 2.5 cm wide running down the cloth.
+        MaterialSpec(key: "garment.refstripe", program: .pinstripe).with {
+            $0.colorA = linear(0xF2F3F5); $0.colorB = linear(0x0A0A0C, 0); $0.colorC = linear(0x505050, 0.02)
+            $0.knobs = V4(40, 0.15, 0.7, 1); $0.seed = 113; $0.tileSize = 0.05; $0.normalStrength = 0.9; $0.roughness = 0.7; $0.twoSided = true
+        },
         // Technical nylon (jackets).
         MaterialSpec(key: "garment.nylon", program: .fabricWeave).with {
             $0.colorA = linear(0x2A3A2E); $0.colorB = linear(0x2A3A2E, 0); $0.colorC = linear(0x504840, 0.06)
             $0.knobs = V4(80, 0, 0.62, 10); $0.seed = 106; $0.tileSize = 0.04; $0.normalStrength = 1; $0.roughness = 0.62; $0.twoSided = true
+        },
+        // Boxing-trunk satin: tight weave, high sheen.
+        MaterialSpec(key: "garment.satin", program: .fabricWeave).with {
+            $0.colorA = linear(0x2A3A2E); $0.colorB = linear(0x2A3A2E, 0); $0.colorC = linear(0x504840, 0.02)
+            $0.knobs = V4(120, 0, 0.26, 10); $0.seed = 116; $0.tileSize = 0.03; $0.normalStrength = 0.45; $0.roughness = 0.26; $0.twoSided = true
         },
         // Wool suiting / coating.
         MaterialSpec(key: "garment.flannel", program: .fabricWeave).with {
@@ -62,9 +72,14 @@ public enum GarmentFabrics {
             $0.colorA = linear(0xF2F2F2); $0.colorB = linear(0xF2F2F2, 0); $0.colorC = linear(0x101010, 0.02)
             $0.knobs = V4(60, 0.02, 0.55, 0); $0.seed = 112; $0.tileSize = 0.008; $0.normalStrength = 0.5; $0.roughness = 0.55; $0.specular = 0.35; $0.twoSided = true
         },
-        // Shoe sole: solid rubber.
+        // Shoe sole: solid rubber, tinted per part (midsole foam, outsole, heel).
         MaterialSpec(key: "garment.rubber", program: nil).with {
-            $0.baseColor = V3(0.9, 0.9, 0.9); $0.roughness = 0.6; $0.twoSided = true
+            $0.baseColor = V3(0.9, 0.9, 0.9); $0.roughness = 0.72; $0.specular = 0.3; $0.twoSided = true
+        },
+        // Dress-shoe calf leather: fine grain, polished.
+        MaterialSpec(key: "garment.calf", program: .leather).with {
+            $0.colorA = linear(0x3A2418); $0.colorB = linear(0x1E120A); $0.colorC = linear(0x5A4030)
+            $0.knobs = V4(150, 0.15, 0.3, 0.1); $0.seed = 114; $0.tileSize = 0.12; $0.normalStrength = 0.5; $0.roughness = 0.3; $0.specular = 0.5; $0.clearcoat = 0.25; $0.twoSided = true
         },
         // Heat-pressed lettering: flat vinyl.
         MaterialSpec(key: "print", program: nil).with {
@@ -100,32 +115,53 @@ public enum GarmentFabrics {
 /// Built-in garments. Use `.colored(0xRRGGBB)` to recolor and `.with { }` to adjust any parameter.
 public enum Wardrobe {
     public static let tshirt = Garment(id: "tshirt", name: "T-shirt", layer: 1, coverage: .init().with { $0.torso = true; $0.sleeves = 0.55; $0.torsoBottom = 0.42; $0.neckDepth = 0.035; $0.neckScoop = 0.02 }, material: "garment.jersey")
-        .with { $0.offset = 0.004; $0.flare = 0.012; $0.folds = 0.004 }
+        .with { $0.offset = 0.009; $0.flare = 0.012; $0.folds = 0.004 }
     public static let longSleeve = tshirt.with { $0.id = "longsleeve"; $0.name = "Long-sleeve tee"; $0.coverage.sleeves = 1.95 }
     public static let tank = tshirt.with { $0.id = "tank"; $0.name = "Tank top"; $0.coverage.sleeves = 0; $0.coverage.neckScoop = 0.05 }
     public static let shirt = Garment(id: "shirt", name: "Button shirt", layer: 1, coverage: .init().with { $0.torso = true; $0.sleeves = 1.95; $0.torsoBottom = 0.5; $0.neckDepth = 0.012 }, material: "garment.poplin")
-        .with { $0.offset = 0.006; $0.flare = 0.015; $0.folds = 0.006 }
+        .with { $0.offset = 0.01; $0.flare = 0.015; $0.folds = 0.006 }
     public static let sweater = Garment(id: "sweater", name: "Crew sweater", layer: 2, coverage: .init().with { $0.torso = true; $0.sleeves = 1.92; $0.torsoBottom = 0.55; $0.neckDepth = 0.015 }, material: "garment.wool")
         .with { $0.offset = 0.011; $0.flare = 0.008; $0.folds = 0.007; $0.hem = 0.006; $0.drape = 20 }
     public static let jacket = Garment(id: "jacket", name: "Field jacket", layer: 3, coverage: .init().with { $0.torso = true; $0.sleeves = 1.9; $0.torsoBottom = 0.45; $0.neckDepth = 0.0; $0.neckScoop = 0.06 }, material: "garment.nylon")
-        .with { $0.offset = 0.02; $0.flare = 0.02; $0.folds = 0.01; $0.hem = 0.008; $0.drape = 40 }
+        .with { $0.offset = 0.02; $0.flare = 0.02; $0.folds = 0.01; $0.hem = 0.008; $0.drape = 14 }
     public static let leatherJacket = jacket.with { $0.id = "leather-jacket"; $0.name = "Leather jacket"; $0.material = "garment.leather"; $0.coverage.torsoBottom = 0.45; $0.offset = 0.016; $0.folds = 0.006 }
     public static let coat = jacket.with { $0.id = "coat"; $0.name = "Overcoat"; $0.material = "garment.flannel"; $0.coverage.legs = 1.1; $0.offset = 0.022; $0.flare = 0.06 }
-    public static let jeans = Garment(id: "jeans", name: "Jeans", layer: 1, coverage: .init().with { $0.pelvis = true; $0.rise = 0.75; $0.legs = 1.97 }, material: "garment.denim")
-        .with { $0.offset = 0.004; $0.flare = 0.012; $0.folds = 0.005; $0.hem = 0.005; $0.drape = 6 }
+    public static let jeans = Garment(id: "jeans", name: "Jeans", layer: 1, coverage: .init().with { $0.pelvis = true; $0.rise = 0.97; $0.legs = 1.97 }, material: "garment.denim")
+        .with { $0.offset = 0.0025; $0.flare = 0.012; $0.folds = 0.005; $0.hem = 0.005; $0.drape = 6 }
     public static let chinos = jeans.with { $0.id = "chinos"; $0.name = "Chinos"; $0.material = "garment.twill"; $0.flare = 0.016 }
     public static let shorts = jeans.with { $0.id = "shorts"; $0.name = "Shorts"; $0.material = "garment.twill:5A6B4A"; $0.coverage.legs = 0.62; $0.flare = 0.02 }
-    public static let leggings = Garment(id: "leggings", name: "Leggings", layer: 1, coverage: .init().with { $0.pelvis = true; $0.rise = 0.9; $0.legs = 1.95 }, material: "garment.lycra")
+    public static let leggings = Garment(id: "leggings", name: "Leggings", layer: 1, coverage: .init().with { $0.pelvis = true; $0.rise = 1; $0.legs = 1.95 }, material: "garment.lycra")
         .with { $0.offset = 0.0015; $0.folds = 0.001; $0.hem = 0.0015; $0.drape = 1 }
     public static let skirt = Garment(id: "skirt", name: "Skirt", layer: 1, coverage: .init().with { $0.pelvis = true; $0.rise = 0.85; $0.skirt = 0.85 }, material: "garment.flannel:2A2A30")
         .with { $0.offset = 0.006; $0.flare = 0.09; $0.folds = 0.01 }
     public static let dress = Garment(id: "dress", name: "Dress", layer: 1, coverage: .init().with { $0.torso = true; $0.sleeves = 0.3; $0.torsoBottom = 0.5; $0.pelvis = true; $0.rise = 1; $0.skirt = 1.05; $0.neckScoop = 0.05; $0.neckDepth = 0.03 }, material: "garment.poplin:7A2A3A")
-        .with { $0.offset = 0.005; $0.flare = 0.11; $0.folds = 0.012 }
+        .with { $0.offset = 0.005; $0.flare = 0.11; $0.folds = 0.012; $0.drape = 14 }
     public static let briefs = Garment(id: "briefs", name: "Briefs", layer: 0, coverage: .init().with { $0.pelvis = true; $0.rise = 0.3; $0.legs = 0.12 }, material: "garment.jersey:2A2A2E")
         .with { $0.offset = 0.0015; $0.folds = 0.0005; $0.hem = 0.0015; $0.drape = 1 }
     public static let sneakers = Garment(id: "sneakers", name: "Sneakers", layer: 4, coverage: .init().with { $0.feet = 1 }, material: "garment.canvas")
-        .with { $0.offset = 0.007; $0.folds = 0.001; $0.hem = 0.004; $0.drape = 0 }
-    public static let boots = sneakers.with { $0.id = "boots"; $0.name = "Leather boots"; $0.material = "garment.leather:3A2418"; $0.coverage.feet = 2; $0.offset = 0.009 }
+        .with {
+            $0.offset = 0.007; $0.folds = 0.001; $0.hem = 0.004; $0.drape = 0
+            $0.cut = Garment.Cut(kind: .shoe).with { $0.shoe = .sneaker }
+            $0.sole = "garment.rubber:EDEAE2"; $0.trim = "garment.canvas:C9C4B8"
+        }
+    /// Lace-up leather boots: stacked heel, lugged sole, shaft to mid-calf.
+    public static let boots = sneakers.with {
+        $0.id = "boots"; $0.name = "Leather boots"; $0.material = "garment.calf:4A2C1C"; $0.coverage.feet = 2; $0.offset = 0.009
+        $0.cut = Garment.Cut(kind: .shoe).with { $0.shoe = .boot }
+        $0.sole = "garment.rubber:2A1E16"; $0.trim = "garment.calf:3A2216"
+    }
+    /// Leather loafers: low vamp, penny saddle, stacked heel.
+    public static let dressShoes = sneakers.with {
+        $0.id = "dress-shoes"; $0.name = "Loafers"; $0.material = "garment.calf:5A3420"; $0.coverage.feet = 1; $0.offset = 0.005
+        $0.cut = Garment.Cut(kind: .shoe).with { $0.shoe = .dress }
+        $0.sole = "garment.rubber:2A1D14"; $0.trim = "garment.calf:4A2A18"
+    }
+    /// Closed-toe pumps on a 4 cm heel.
+    public static let pumps = sneakers.with {
+        $0.id = "pumps"; $0.name = "Pumps"; $0.material = "garment.calf:1E1412"; $0.coverage.feet = 1; $0.offset = 0.004
+        $0.cut = Garment.Cut(kind: .shoe).with { $0.shoe = .pump }
+        $0.sole = "garment.rubber:2A1D14"; $0.trim = "garment.calf:1E1412"
+    }
     public static let socks = Garment(id: "socks", name: "Socks", layer: 0, coverage: .init().with { $0.feet = 1.5 }, material: "garment.jersey:EDEDED")
         .with { $0.offset = 0.0012; $0.folds = 0.0005; $0.hem = 0.001; $0.drape = 0 }
     public static let gloves = Garment(id: "gloves", name: "Gloves", layer: 3, coverage: .init().with { $0.hands = true }, material: "garment.leather")
@@ -146,8 +182,8 @@ public enum Wardrobe {
 
     /// High-top basketball shoes with a rubber sole band.
     public static let hoopShoes = sneakers.with {
-        $0.id = "hoop-shoes"; $0.name = "Basketball shoes"; $0.material = "garment.synthetic"; $0.sole = "garment.rubber"
-        $0.coverage.ankle = 0.12; $0.offset = 0.01; $0.cut = Garment.Cut(kind: .shoe)
+        $0.id = "hoop-shoes"; $0.name = "Basketball shoes"; $0.material = "garment.synthetic"; $0.sole = "garment.rubber:F2F2F2"; $0.trim = nil
+        $0.coverage.ankle = 0.12; $0.offset = 0.01; $0.cut = Garment.Cut(kind: .shoe).with { $0.shoe = .hightop }
     }
     /// Crew socks to mid-calf.
     public static let crewSocks = socks.with {
@@ -155,7 +191,7 @@ public enum Wardrobe {
         $0.cut = Garment.Cut(kind: .sock); $0.offset = 0.004; $0.folds = 0.001; $0.drape = 0; $0.trimWidth = 0.03
     }
 
-    public static let all: [Garment] = [tshirt, longSleeve, tank, shirt, sweater, jacket, leatherJacket, coat, jeans, chinos, shorts, leggings, skirt, dress, briefs, sneakers, boots, socks, gloves, jersey, hoopShorts, hoopShoes, crewSocks]
+    public static let all: [Garment] = [tshirt, longSleeve, tank, shirt, sweater, jacket, leatherJacket, coat, jeans, chinos, shorts, leggings, skirt, dress, briefs, sneakers, boots, socks, gloves, jersey, hoopShorts, hoopShoes, crewSocks, dressShoes, pumps]
     public static func garment(_ id: String) -> Garment? { all.first { $0.id == id } }
 }
 
@@ -172,7 +208,7 @@ public struct Outfit: Codable, Sendable, Hashable {
     public static let smart = Outfit([Wardrobe.shirt, Wardrobe.chinos.colored(0x2B2E36), Wardrobe.boots])
     public static let winter = Outfit([Wardrobe.longSleeve.colored(0xEDE6DA), Wardrobe.sweater.colored(0x7A2E2A), Wardrobe.jeans, Wardrobe.boots])
     public static let outdoor = Outfit([Wardrobe.tshirt.colored(0x6A6A62), Wardrobe.jacket, Wardrobe.chinos.colored(0x4A4436), Wardrobe.boots])
-    public static let summerDress = Outfit([Wardrobe.dress, Wardrobe.sneakers])
+    public static let summerDress = Outfit([Wardrobe.dress, Wardrobe.pumps])
     public static let athletic = Outfit([Wardrobe.tank.colored(0x1F5FA8), Wardrobe.leggings, Wardrobe.sneakers])
     public static let biker = Outfit([Wardrobe.tshirt.colored(0x1C1C1C), Wardrobe.leatherJacket, Wardrobe.jeans.colored(0x23252B), Wardrobe.boots])
     /// Basketball uniform: jersey with trim, printed wordmark, number and name, shorts, shoes.
@@ -194,13 +230,15 @@ public struct Outfit: Codable, Sendable, Hashable {
         let shorts = Wardrobe.hoopShorts.colored(primary)
         let shoe = Wardrobe.hoopShoes.with {
             $0.material = "garment.synthetic:" + String(format: "%06X", shoes)
-            $0.sole = "garment.rubber:" + String(format: "%06X", 0x1E1E1E)
+            $0.sole = "garment.rubber:" + String(format: "%06X", 0xF2F2F2)
             $0.trim = "garment.synthetic:" + String(format: "%06X", secondary)
         }
         let socks = Wardrobe.crewSocks.with { $0.trim = "garment.jersey:" + String(format: "%06X", primary) }
         return Outfit([jersey, shorts, socks, shoe])
     }
-    public static let presets: [String: Outfit] = ["casual": casual, "smart": smart, "winter": winter, "outdoor": outdoor, "dress": summerDress, "athletic": athletic, "biker": biker]
+    public static let business = Outfit([Wardrobe.shirt, Wardrobe.chinos.colored(0x2B2E36), Wardrobe.dressShoes])
+    public static let heels = Outfit([Wardrobe.tshirt.colored(0xE8E4DC), Wardrobe.skirt, Wardrobe.pumps.with { $0.material = "garment.calf:8A1F2B"; $0.trim = "garment.calf:8A1F2B" }])
+    public static let presets: [String: Outfit] = ["business": business, "heels": heels, "casual": casual, "smart": smart, "winter": winter, "outdoor": outdoor, "dress": summerDress, "athletic": athletic, "biker": biker]
 }
 
 public extension Garment.Emblem {

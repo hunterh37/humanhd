@@ -6,7 +6,9 @@ import RealMaterials
 /// Alpha textures of hair strands for cards (eyelashes now, hair cards later). Strands run along +v
 /// from root (v = 0) to tip; textures tile in u.
 public final class StrandPainter: @unchecked Sendable {
-    public static let shared: StrandPainter? = try? StrandPainter()
+    public static let shared: StrandPainter? = {
+        do { return try StrandPainter() } catch { FileHandle.standardError.write(Data("StrandPainter init: \(error)\n".utf8)); return nil }
+    }()
     let device: MTLDevice
     public let queue: MTLCommandQueue
     let kernel: MTLComputePipelineState
@@ -25,6 +27,8 @@ public final class StrandPainter: @unchecked Sendable {
         public var seed: UInt32 = 3
         /// 1: density ramp along v (row v keeps a fraction v of the strands; for hairline fades).
         public var ramp: Float = 0
+        /// Strand waviness amplitude (tile widths), grows from root to tip.
+        public var wave: Float = 0.014
         public init() {}
         public static let lashes = Spec()
     }
@@ -52,7 +56,7 @@ public final class StrandPainter: @unchecked Sendable {
     static let source = #"""
     #include <metal_stdlib>
     using namespace metal;
-    struct Spec { int strands; float width; float clump; float drift; float minLength; uint seed; float ramp; };
+    struct Spec { int strands; float width; float clump; float drift; float minLength; uint seed; float ramp; float wave; };
     inline uint pcg(uint v) { uint s = v * 747796405u + 2891336453u; uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return (w >> 22u) ^ w; }
     inline float h1(int j, uint s) { return float(pcg(uint(j) ^ pcg(s)) & 0xffffffu) / 16777216.0; }
 
@@ -79,9 +83,10 @@ public final class StrandPainter: @unchecked Sendable {
                     t = v / len;
                 }
                 float x = mix(root, gc, S.clump * t * t) + S.drift * (h1(j, S.seed + 5u) - 0.5) * t * t;
-                float width = S.width * pow(max(0.0, 1.0 - t), 0.75) + px * 0.35;
+                x += S.wave * sin(v * (22.0 + 26.0 * h1(j, S.seed + 23u)) + 6.2831 * h1(j, S.seed + 29u)) * min(1.0, t * 3.0);
+                float width = S.width * (0.75 + 0.5 * h1(j, S.seed + 31u)) * pow(max(0.0, 1.0 - t), 0.75) + px * 0.35;
                 float d = abs(u - x);
-                float rootFade = S.ramp > 0.5 ? 1.0 : smoothstep(0.0, 0.1, t + h1(j, S.seed + 19u) * 0.05);
+                float rootFade = S.ramp > 0.5 ? 1.0 : smoothstep(0.0, 0.04, t + h1(j, S.seed + 19u) * 0.03);
                 cov = max(cov, (1.0 - smoothstep(width * 0.5, width * 0.5 + px, d)) * rootFade);
             }
         }

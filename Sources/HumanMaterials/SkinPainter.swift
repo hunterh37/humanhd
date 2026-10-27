@@ -21,14 +21,18 @@ public struct SkinMaps {
     public var a: MTLTexture
     public var n: MTLTexture
     public var p: MTLTexture
-    public init(a: MTLTexture, n: MTLTexture, p: MTLTexture) { self.a = a; self.n = n; self.p = p }
+    /// RGBA8 tattoo ink transmittance (1 = clear skin).
+    public var t: MTLTexture
+    public init(a: MTLTexture, n: MTLTexture, p: MTLTexture, t: MTLTexture) { self.a = a; self.n = n; self.p = p; self.t = t }
 }
 
 /// Paints skin into UV space on the GPU. The canonical body is rasterized into the atlas and every
 /// texel is shaded from its 3D position and anatomical region fields, so detail is continuous across
 /// UV seams and the face atlas and body atlas agree where they blend.
 public final class SkinPainter: @unchecked Sendable {
-    public static let shared: SkinPainter? = try? SkinPainter()
+    public static let shared: SkinPainter? = {
+        do { return try SkinPainter() } catch { FileHandle.standardError.write(Data("SkinPainter init: \(error)\n".utf8)); return nil }
+    }()
 
     public let device: MTLDevice
     public let queue: MTLCommandQueue
@@ -54,7 +58,7 @@ public final class SkinPainter: @unchecked Sendable {
         var brows: Float, browThickness: Float, wrinkles: Float, pores: Float, texelMeters: Float
         var seed: UInt32, isFace: Float, sunExposure: Float, blotch: Float, veins: Float
         // Keep the scalar block a multiple of 16 bytes so the float4s stay aligned with Metal.
-        var bodyHair: Float, pad0: Float, pad1: Float, pad2: Float
+        var bodyHair: Float, tattoo: Float, scalpHair: Float, pad2: Float
         var eyeL: SIMD4<Float>, eyeR: SIMD4<Float>, mouth: SIMD4<Float>, headAxis: SIMD4<Float>
     }
 
@@ -62,11 +66,11 @@ public final class SkinPainter: @unchecked Sendable {
         guard let device, let queue = device.makeCommandQueue() else { throw PainterError.metal("device") }
         self.device = device; self.queue = queue
         let opts = MTLCompileOptions(); opts.mathMode = .fast
-        let lib = try device.makeLibrary(source: skinPainterSource, options: opts)
+        let lib = try device.makeLibrary(source: skinPainterSource.replacingOccurrences(of: "//@TATTOO@", with: tattooSource), options: opts)
         let rp = MTLRenderPipelineDescriptor()
         rp.vertexFunction = lib.makeFunction(name: "hh_raster_vs")
         rp.fragmentFunction = lib.makeFunction(name: "hh_paint_fs")
-        for i in 0..<4 { rp.colorAttachments[i].pixelFormat = .rgba8Unorm }
+        for i in 0..<5 { rp.colorAttachments[i].pixelFormat = .rgba8Unorm }
         rp.depthAttachmentPixelFormat = .depth32Float
         paint = try device.makeRenderPipelineState(descriptor: rp)
         rp.fragmentFunction = lib.makeFunction(name: "hh_debug_fs")
@@ -138,7 +142,7 @@ public final class SkinPainter: @unchecked Sendable {
         return PaintParams(age: d.age, sex: d.sex, freckles: d.freckles, moles: d.moles, stubble: d.stubble, stubbleDensity: d.stubbleDensity,
                            brows: d.brows, browThickness: d.browThickness, wrinkles: d.wrinkles, pores: d.pores, texelMeters: texel,
                            seed: d.seed, isFace: face ? 1 : 0, sunExposure: d.sunExposure, blotch: d.blotch, veins: 0,
-                           bodyHair: d.bodyHair, pad0: 0, pad1: 0, pad2: 0,
+                           bodyHair: d.bodyHair, tattoo: Float(d.tattoo), scalpHair: d.scalpHair, pad2: 0,
                            eyeL: SIMD4(eyeL, 0), eyeR: SIMD4(eyeR, 0), mouth: SIMD4(mouth, 0), headAxis: SIMD4(fp.center.z, lm["head"]?.y ?? 1.5, 0, 0))
     }
 
@@ -161,9 +165,9 @@ public final class SkinPainter: @unchecked Sendable {
         let vb = device.makeBuffer(bytes: verts, length: verts.count * MemoryLayout<PaintVertex>.stride, options: .storageModeShared)!
         let ib = device.makeBuffer(bytes: bi, length: bi.count * 4, options: .storageModeShared)!
         let u: MTLTextureUsage = [.renderTarget, .shaderRead, .shaderWrite]
-        let targets = (0..<4).map { _ in texture(.rgba8Unorm, size, mips: false, usage: u, storage: .shared) }
+        let targets = (0..<5).map { _ in texture(.rgba8Unorm, size, mips: false, usage: u, storage: .shared) }
         let rpd = MTLRenderPassDescriptor()
-        for i in 0..<4 { rpd.colorAttachments[i].texture = targets[i]; rpd.colorAttachments[i].loadAction = .clear; rpd.colorAttachments[i].storeAction = .store }
+        for i in 0..<5 { rpd.colorAttachments[i].texture = targets[i]; rpd.colorAttachments[i].loadAction = .clear; rpd.colorAttachments[i].storeAction = .store }
         rpd.depthAttachment.texture = texture(.depth32Float, size, mips: false, usage: [.renderTarget])
         rpd.depthAttachment.loadAction = .clear; rpd.depthAttachment.storeAction = .dontCare
         let cb = queue.makeCommandBuffer()!
@@ -182,15 +186,15 @@ public final class SkinPainter: @unchecked Sendable {
         let isFace = atlas == .face
         let mesh = isFace ? faceMesh : bodyMesh
         let rgba = MTLTextureUsage([.renderTarget, .shaderRead, .shaderWrite])
-        var ping = (0..<4).map { _ in texture(.rgba8Unorm, n, mips: false, usage: rgba) }
-        var pong = (0..<4).map { _ in texture(.rgba8Unorm, n, mips: false, usage: rgba) }
+        var ping = (0..<5).map { _ in texture(.rgba8Unorm, n, mips: false, usage: rgba) }
+        var pong = (0..<5).map { _ in texture(.rgba8Unorm, n, mips: false, usage: rgba) }
         let depth = texture(.depth32Float, n, mips: false, usage: [.renderTarget], storage: .private)
         let rpd = MTLRenderPassDescriptor()
-        for i in 0..<4 {
+        for i in 0..<5 {
             rpd.colorAttachments[i].texture = ping[i]
             rpd.colorAttachments[i].loadAction = .clear
             rpd.colorAttachments[i].storeAction = .store
-            rpd.colorAttachments[i].clearColor = i == 1 ? MTLClearColor(red: 0.5, green: 0.5, blue: 0, alpha: 1) : MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+            rpd.colorAttachments[i].clearColor = i == 1 ? MTLClearColor(red: 0.5, green: 0.5, blue: 0, alpha: 1) : i == 4 ? MTLClearColor(red: 1, green: 1, blue: 1, alpha: 1) : MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
         }
         rpd.depthAttachment.texture = depth; rpd.depthAttachment.loadAction = .clear; rpd.depthAttachment.clearDepth = 1; rpd.depthAttachment.storeAction = .dontCare
         guard let re = cb.makeRenderCommandEncoder(descriptor: rpd) else { throw PainterError.metal("render encoder") }
@@ -215,13 +219,14 @@ public final class SkinPainter: @unchecked Sendable {
             ce.setTexture(ping[1], index: 2); ce.setTexture(outN, index: 3)
             ce.setTexture(ping[2], index: 4); ce.setTexture(last ? view(targets.p, rgba8: true) : outP, index: 5)
             ce.setTexture(ping[3], index: 6); ce.setTexture(pong[3], index: 7)
+            ce.setTexture(ping[4], index: 8); ce.setTexture(last ? view(targets.t, rgba8: true) : pong[4], index: 9)
             let tw = dilate.threadExecutionWidth, th = max(1, dilate.maxTotalThreadsPerThreadgroup / tw)
             do { let tg = MTLSize(width: tw, height: th, depth: 1); ce.dispatchThreadgroups(MTLSize(width: ((n) + tg.width - 1) / tg.width, height: ((n) + tg.height - 1) / tg.height, depth: 1), threadsPerThreadgroup: tg) }
             swap(&ping, &pong)
         }
         ce.endEncoding()
         guard let blit = cb.makeBlitCommandEncoder() else { throw PainterError.metal("blit") }
-        for t in [targets.a, targets.n, targets.p] where t.mipmapLevelCount > 1 { blit.generateMipmaps(for: t) }
+        for t in [targets.a, targets.n, targets.p, targets.t] where t.mipmapLevelCount > 1 { blit.generateMipmaps(for: t) }
         blit.endEncoding()
     }
 
@@ -234,7 +239,7 @@ public final class SkinPainter: @unchecked Sendable {
     public func encodeMicro(into t: MTLTexture, seed: UInt32 = 7, commandBuffer cb: MTLCommandBuffer) throws {
         guard let ce = cb.makeComputeCommandEncoder() else { throw PainterError.metal("compute") }
         ce.setComputePipelineState(micro)
-        ce.setTexture(view(t, rgba8: false), index: 0)
+        ce.setTexture(view(t, rgba8: true), index: 0)
         var s = seed
         ce.setBytes(&s, length: 4, index: 0)
         let tw = micro.threadExecutionWidth, th = max(1, micro.maxTotalThreadsPerThreadgroup / tw)
@@ -246,7 +251,7 @@ public final class SkinPainter: @unchecked Sendable {
     /// Convenience: paint into new shared textures and wait (CLI dumps, tests).
     public func paintSync(_ d: SkinDetail, atlas: SkinAtlas, size: Int) throws -> SkinMaps {
         let u: MTLTextureUsage = [.shaderRead, .shaderWrite]
-        let maps = SkinMaps(a: texture(.rgba8Unorm, size, mips: true, usage: u), n: texture(.rg8Unorm, size, mips: true, usage: u), p: texture(.rgba8Unorm, size, mips: true, usage: u))
+        let maps = SkinMaps(a: texture(.rgba8Unorm, size, mips: true, usage: u), n: texture(.rg8Unorm, size, mips: true, usage: u), p: texture(.rgba8Unorm, size, mips: true, usage: u), t: texture(.rgba8Unorm, size, mips: true, usage: u))
         guard let cb = queue.makeCommandBuffer() else { throw PainterError.metal("cb") }
         try encode(d, atlas: atlas, into: maps, commandBuffer: cb)
         cb.commit(); cb.waitUntilCompleted()
